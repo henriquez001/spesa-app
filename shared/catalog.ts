@@ -72,7 +72,7 @@ export function qtyFromName(name: string): string | null {
 /** Costruisce un prezzo del listino da un oggetto prodotto, qualunque nome abbiano i campi. */
 export function fromProductJson(o: Record<string, unknown>, source: CatalogSource, store: StoreId, seenAt: number): CatalogPrice | null {
   const rawName = pick(o, ["name", "productName", "item_name", "title", "nome", "description"]);
-  const brand = pick(o, ["brand", "item_brand", "marca"]);
+  const brand = pick(o, ["brand", "item_brand", "marca", "marchio"]);
   if (typeof rawName !== "string") return null;
   let product = normalizeName(unescapeHtml(rawName));
   if (typeof brand === "string" && brand && !product.toLowerCase().includes(brand.toLowerCase())) product = normalizeName(`${product} ${brand}`);
@@ -80,7 +80,10 @@ export function fromProductJson(o: Record<string, unknown>, source: CatalogSourc
   const base = centsOf(pick(o, ["basePrice", "listPrice", "originalPrice", "fullPrice", "price"]));
   if (!product || !final) return null;
   const code = pick(o, ["code", "sku", "productCode", "item_id", "productId", "id", "ean"]);
-  const qty = qtyFromName(product);
+  // Conad dà la quantità a parte: netQuantity 0.25 + netQuantityUm "KG"
+  const nq = Number(o.netQuantity);
+  const um = typeof o.netQuantityUm === "string" ? o.netQuantityUm.toLowerCase() : "";
+  const qty = qtyFromName(product) ?? (nq > 0 && /^(kg|g|l|ml|cl|pz)$/.test(um) ? `${String(nq).replace(".", ",")} ${um}` : null);
   const u = unitFromQty(final, qty);
   return {
     key: `${source}:${typeof code === "string" || typeof code === "number" ? code : product.toLowerCase()}`,
@@ -97,9 +100,14 @@ export function fromProductJson(o: Record<string, unknown>, source: CatalogSourc
   };
 }
 
-/** Pagina di ricerca di spesaonline.conad.it: ogni scheda porta il prodotto in JSON nell'attributo data-product. */
-export function parseConad(html: string, seenAt: number): CatalogPrice[] {
+/**
+ * Pagina di ricerca di spesaonline.conad.it: ogni scheda porta il prodotto in JSON nell'attributo data-product
+ * (campi visti: code, nome, marchio, basePrice, netQuantity, netQuantityUm, bassiFissi...).
+ * Le schede con basePrice 0 (prezzo legato al punto vendita) si saltano. `cards` conta tutte le schede.
+ */
+export function parseConadPage(html: string, seenAt: number): { prices: CatalogPrice[]; cards: number } {
   const out = new Map<string, CatalogPrice>();
+  let cards = 0;
   const re = /data-product\s*=\s*("([^"]*)"|'([^']*)')/g;
   for (let m = re.exec(html); m; m = re.exec(html)) {
     let o: unknown;
@@ -109,10 +117,15 @@ export function parseConad(html: string, seenAt: number): CatalogPrice[] {
       continue;
     }
     if (!o || typeof o !== "object") continue;
+    cards++;
     const p = fromProductJson(o as Record<string, unknown>, "conad-listino", "conad", seenAt);
     if (p) out.set(p.key, p);
   }
-  return [...out.values()];
+  return { prices: [...out.values()], cards };
+}
+
+export function parseConad(html: string, seenAt: number): CatalogPrice[] {
+  return parseConadPage(html, seenAt).prices;
 }
 
 /** Le parole indicizzate di un prodotto, per la ricerca veloce sul server. */

@@ -42,3 +42,19 @@ describe("listino Conad", () => {
     expect(qtyFromName("Detersivo 2 x 1,5 l")).toBe("2 x 1,5 l");
   });
 });
+
+describe("schede Conad vere", () => {
+  it("campi nome/marchio/basePrice/netQuantity; basePrice 0 si salta ma la scheda conta", async () => {
+    const { parseConadPage } = await import("../shared/catalog");
+    const page =
+      card({ code: "402132", nome: "Burro 250 g Conad", marchio: "CONAD", basePrice: 2.19, netQuantity: 0.25, netQuantityUm: "KG", bassiFissi: false }) +
+      card({ code: "1", nome: "Ricotta vaccina", marchio: "Granarolo", basePrice: 1.5, netQuantity: 0.25, netQuantityUm: "KG" }) +
+      card({ code: "2", nome: "Burro locale", marchio: "X", basePrice: 0.0 });
+    const r = parseConadPage(page, 1);
+    expect(r.cards).toBe(3);
+    expect(r.prices.map((p) => [p.product, p.cents, p.qty, p.unitCents])).toEqual([
+      ["Burro 250 g Conad", 219, "250 g", 876],
+      ["Ricotta vaccina Granarolo", 150, "0,25 kg", 600],
+    ]);
+  });
+});

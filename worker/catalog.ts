@@ -1,9 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { bestFor, indexWords, KEYWORDS, parseConad, type CatalogPrice } from "../shared/catalog";
+import { bestFor, indexWords, KEYWORDS, parseConadPage, type CatalogPrice } from "../shared/catalog";
 import type { StoreId } from "../shared/list";
 import { matches, words } from "../shared/prices";
 
-const PAGE_SIZE = 30; // schede per pagina di ricerca Conad
 const MAX_PAGES = 4; // per parola: bastano le prime 120 schede
 const STEP_MS = 3000; // una pagina ogni 3 secondi, per non pesare sul sito
 const KEEP_FOR = 21 * 864e5; // un prezzo non più visto da 3 settimane si toglie
@@ -60,9 +59,10 @@ export class Catalog extends DurableObject<Env> {
     sql.exec("DELETE FROM queue WHERE n = ?", row.n);
     const task = JSON.parse(row.task) as Task;
     try {
-      const found = await this.fetchConad(task);
+      const { prices: found, cards } = await this.fetchConad(task);
       for (const p of found) this.save(p);
-      if (found.length >= PAGE_SIZE && task.page < MAX_PAGES) this.push({ ...task, page: task.page + 1 });
+      // si va avanti finché la pagina ha schede (con o senza prezzo)
+      if (cards > 0 && task.page < MAX_PAGES) this.push({ ...task, page: task.page + 1 });
       if (run) sql.exec("UPDATE runs SET pages = pages + 1, saved = saved + ? WHERE started = ?", found.length, run.started);
     } catch (e) {
       console.error("listino", task, e);
@@ -71,19 +71,20 @@ export class Catalog extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + STEP_MS);
   }
 
-  private async fetchConad(task: Task): Promise<CatalogPrice[]> {
+  private async fetchConad(task: Task): Promise<{ prices: CatalogPrice[]; cards: number }> {
     const url = `https://spesaonline.conad.it/tutti-i-prodotti/_jcr_content/root/search.loader.html?query=${encodeURIComponent(task.query)}&page=${task.page}`;
     const res = await fetch(url, { headers: { "user-agent": UA, accept: "text/html" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const html = await res.text();
-    const found = parseConad(html, Date.now());
+    const page = parseConadPage(html, Date.now());
+    const found = page.prices;
     // se la pagina ha schede ma non ne leggo nessuna, tengo un pezzo di pagina per capire cosa è cambiato
     if (found.length === 0) {
       const at = html.indexOf("data-product");
       const sample = at >= 0 ? html.slice(at, at + 1500) : html.slice(0, 600);
       this.ctx.storage.sql.exec("UPDATE runs SET sample = ? WHERE started = (SELECT MAX(started) FROM runs) AND sample IS NULL", `${task.query}: ${sample}`);
     }
-    return found;
+    return page;
   }
 
   private save(p: CatalogPrice): void {
