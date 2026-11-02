@@ -12,6 +12,9 @@
   "durable_objects": {
     "bindings": [{ "name": "FAMILY", "class_name": "FamilyList" }]
   },
+  // Workers AI legge le foto dei cartellini (modello di visione, cambiabile qui sotto)
+  "ai": { "binding": "AI" },
+  "vars": { "VISION_MODEL": "@cf/meta/llama-3.2-11b-vision-instruct" },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FamilyList"] }],
   "observability": { "enabled": true }
 }

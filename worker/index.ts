@@ -12,7 +12,7 @@ export default {
       return json({ token: randomId(16) }, 201);
     }
 
-    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista)$/);
+    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi)$/);
     if (m) {
       const [, token, what] = m;
       if (!FAMILY_TOKEN.test(token)) return json({ error: "Link d'invito non valido." }, 404);

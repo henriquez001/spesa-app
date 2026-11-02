@@ -120,3 +120,23 @@ describe("ListStore", () => {
     vi.useRealTimers();
   });
 });
+
+describe("prezzi nella sincronizzazione", () => {
+  it("salva i prezzi in coda e li riceve dagli altri", () => {
+    vi.stubGlobal("location", { protocol: "https:", host: "spesa.example" });
+    const { store, sockets } = setup();
+    store.connect();
+    store.addPrices([{ product: "Latte", store: "lidl", cents: 89, qty: "1 l", unitCents: 89, unit: "l", offer: false, seenAt: 1 }]);
+    sockets[0].open();
+    expect(sockets[0].ops()[0].price.product).toBe("Latte");
+    const now = Date.now();
+    store.receive(
+      JSON.stringify({
+        t: "snapshot",
+        items: [],
+        prices: [{ id: "remote-price1", product: "Uova", store: "euro", cents: 149, qty: null, unitCents: null, unit: null, offer: false, seenAt: now, deleted: false, createdAt: now, updatedAt: now }],
+      }),
+    );
+    expect(Object.values(store.prices).map((p) => p.product).sort()).toEqual(["Latte", "Uova"]);
+  });
+});

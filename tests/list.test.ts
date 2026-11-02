@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, counts, normalizeName, sameName, sections, validateOp, wins, type Item, type ListState } from "../shared/list";
+import { applyOp, counts, normalizeName, sameName, sections, validateOp, wins, type Data, type Item, type ListState } from "../shared/list";
 
 const base: Item = { id: "item000001", name: "Latte", store: "lidl", done: false, deleted: false, createdAt: 1, updatedAt: 1 };
 const op = (item: Item, opId = "op00000001") => ({ opId, item });
@@ -8,14 +8,14 @@ describe("unione delle modifiche", () => {
   it("vince la modifica più recente, in qualsiasi ordine arrivino", () => {
     const a = { ...base, done: true, updatedAt: 5 };
     const b = { ...base, name: "Latte intero", updatedAt: 7 };
-    const s1: ListState = {};
+    const s1: Data = { items: {}, prices: {} };
     applyOp(s1, op(a));
     applyOp(s1, op(b));
-    const s2: ListState = {};
+    const s2: Data = { items: {}, prices: {} };
     applyOp(s2, op(b));
     applyOp(s2, op(a));
     expect(s1).toEqual(s2);
-    expect(s1[base.id].name).toBe("Latte intero");
+    expect(s1.items[base.id].name).toBe("Latte intero");
   });
 
   it("a parità di orario decide sempre la stessa versione", () => {
@@ -25,7 +25,7 @@ describe("unione delle modifiche", () => {
   });
 
   it("riapplicare la stessa operazione non cambia nulla", () => {
-    const s: ListState = {};
+    const s: Data = { items: {}, prices: {} };
     expect(applyOp(s, op(base))).toBe(true);
     expect(applyOp(s, op(base))).toBe(false);
   });
@@ -33,7 +33,7 @@ describe("unione delle modifiche", () => {
 
 describe("controllo dei dati in arrivo", () => {
   it("accetta un'operazione valida e pulisce il nome", () => {
-    expect(validateOp(op({ ...base, name: "  Pane   integrale " }))?.item.name).toBe("Pane integrale");
+    expect(validateOp(op({ ...base, name: "  Pane   integrale " }))?.item?.name).toBe("Pane integrale");
   });
   it("rifiuta negozi sconosciuti, id strani e nomi vuoti", () => {
     expect(validateOp(op({ ...base, store: "esselunga" as never }))).toBeNull();
