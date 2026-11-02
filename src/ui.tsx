@@ -66,6 +66,7 @@ export const ICONS = {
   prezzi: "M3 12l9-9h8v8l-9 9zM16 8h.01",
   offerte: "M4 4h16v16H4zM4 9h16M9 4v16",
   negozi: "M3 9l2-5h14l2 5M4 9v11h16V9M3 9h18",
+  cerca: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
   camera: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   invite: "M15 19a6 6 0 0 0-12 0M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M16 11h6",

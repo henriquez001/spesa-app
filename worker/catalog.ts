@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { bestFor, eurospinOffersUrl, indexWords, KEYWORDS, lidlOfferLinks, parseConadPage, parseEurospinPage, parseOffersPage, type CatalogPrice, type CatalogSource } from "../shared/catalog";
+import { asPrice, bestFor, eurospinOffersUrl, indexWords, KEYWORDS, lidlOfferLinks, parseConadPage, parseEurospinPage, parseOffersPage, type CatalogPrice, type CatalogSource } from "../shared/catalog";
 import type { StoreId } from "../shared/list";
 import { matches, words } from "../shared/prices";
+import { productKind, searchPrices, toRow } from "../shared/search";
 
 const MAX_PAGES = 4; // per parola: bastano le prime 120 schede
 const STEP_MS = 3000; // una pagina ogni 3 secondi, per non pesare sul sito
@@ -166,7 +167,8 @@ export class Catalog extends DurableObject<Env> {
       "INSERT INTO prices (key, store, words, data, seen, valid_to) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET store = excluded.store, words = excluded.words, data = excluded.data, seen = excluded.seen, valid_to = excluded.valid_to",
       p.key,
       p.store,
-      indexWords(p.product),
+      // anche le parole del tipo: "pancarrè" si trova cercando "pane in cassetta"
+      indexWords(`${p.product} ${productKind(p.product, p.brand)}`),
       JSON.stringify(p),
       p.seenAt,
       p.validTo,
@@ -190,6 +192,25 @@ export class Catalog extends DurableObject<Env> {
       if (Object.keys(best).length > 0) out[name] = best;
     }
     return out;
+  }
+
+  /**
+   * Ricerca della scheda Cerca: scrematura con le parole scritte (basta una), poi le regole vere
+   * su nome, marca e tipo di prodotto. Restituisce i prezzi trovati, al massimo 200.
+   */
+  search(query: string): CatalogPrice[] {
+    const stems = [...new Set(words(query).map((w) => (w.length >= 4 ? w.replace(/[aeio]$/, "") : w)))].slice(0, 6);
+    if (stems.length === 0) return [];
+    const rows = this.ctx.storage.sql
+      .exec<{ data: string }>(
+        `SELECT data FROM prices WHERE (${stems.map(() => "words LIKE ?").join(" OR ")}) AND (valid_to IS NULL OR valid_to >= ?) LIMIT 1500`,
+        ...stems.map((w) => `% ${w}%`),
+        Date.now(),
+      )
+      .toArray()
+      .map((r) => JSON.parse(r.data) as CatalogPrice);
+    const keep = new Set(searchPrices(query, rows.map((p) => toRow({ ...asPrice(p) }))).flatMap((g) => g.rows.map((r) => r.id)));
+    return rows.filter((p) => keep.has(`cat-${p.key}`)).slice(0, 200);
   }
 
   status(): { prices: number; byStore: Record<string, number>; lastRun: unknown; queued: number } {

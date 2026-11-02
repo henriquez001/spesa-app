@@ -24,6 +24,10 @@ export interface Price {
   updatedAt: number;
   /** solo per i prezzi del listino online (non sincronizzati): da dove vengono */
   source?: string;
+  /** marca, carta richiesta e fine offerta: solo dal listino online */
+  brand?: string | null;
+  card?: string | null;
+  validTo?: number | null;
 }
 
 export type PriceState = Record<string, Price>;

@@ -31,7 +31,7 @@ export default {
       return json(await catalog(env).start(true));
     }
 
-    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi|listino)$/);
+    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi|listino|cerca)$/);
     if (m) {
       const [, token, what] = m;
       if (!FAMILY_TOKEN.test(token)) return json({ error: "Link d'invito non valido." }, 404);
@@ -40,6 +40,10 @@ export default {
         const body = (await request.json().catch(() => null)) as { nomi?: unknown } | null;
         const names = Array.isArray(body?.nomi) ? body.nomi.filter((n): n is string => typeof n === "string" && n.length <= 80) : [];
         return json({ prezzi: await catalog(env).lookup(names) });
+      }
+      if (what === "cerca") {
+        const q = (url.searchParams.get("q") ?? "").slice(0, 80);
+        return json({ prezzi: await catalog(env).search(q) });
       }
       if (what === "ws" && request.headers.get("Upgrade") !== "websocket") {
         return json({ error: "Serve una connessione WebSocket." }, 426);

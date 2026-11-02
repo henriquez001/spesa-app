@@ -24,6 +24,8 @@ export interface CatalogPrice {
   validTo: number | null;
   /** prezzo riservato a chi ha la carta della catena (es. "Lidl Plus", "Eurospin Family") */
   card?: string | null;
+  /** la marca, se il sito la dà a parte o si riconosce nel nome */
+  brand?: string | null;
 }
 
 /** Parole di ricerca per il listino: la spesa di casa più comune. */
@@ -103,6 +105,7 @@ export function fromProductJson(o: Record<string, unknown>, source: CatalogSourc
     offer: !!base && base > final,
     seenAt,
     validTo: null,
+    brand: typeof brand === "string" && brand.trim() ? unescapeHtml(brand.trim()) : null,
   };
 }
 
@@ -170,6 +173,9 @@ export function asPrice(p: CatalogPrice): Price {
     createdAt: p.seenAt,
     updatedAt: p.seenAt,
     source: p.source,
+    brand: p.brand ?? null,
+    card: p.card ?? null,
+    validTo: p.validTo,
   };
 }
 
@@ -305,9 +311,14 @@ function lidlProduct(o: Record<string, unknown>, now: number): Record<string, un
   if (value === null) return { ...o, price: null };
   const packaging = ((own !== null ? price.packaging : plus?.packaging) ?? price.packaging) as { text?: unknown } | undefined;
   const end = Number(o.storeEndDate);
+  // Lidl scrive la marca in maiuscolo davanti al nome: "PARMALAT Latte parzialmente scremato"
+  const title = String(o.fullTitle);
+  const lead = title.match(/^((?:[A-ZÀ-Ý0-9&'.\-]{2,}\s+)+)(?=[A-ZÀ-Ý][a-zà-ÿ])/);
+  const brand = lead ? lead[1].trim() : undefined;
   return {
     productId: o.productId ?? o.itemId,
     fullTitle: o.fullTitle,
+    brand,
     price: value,
     packaging: typeof packaging?.text === "string" ? packaging.text : undefined,
     validTo: end > 0 ? end * 1000 : undefined,
@@ -369,6 +380,7 @@ export function parseEurospinPage(html: string, seenAt: number): { prices: Catal
       seenAt,
       validTo: until ? parseValidTo(`fino al ${until}`, seenAt) : null,
       card: /Prezzo Family/i.test(li) ? "Eurospin Family" : null,
+      brand: brand || null,
     });
   }
   return { prices: [...out.values()], cards: parts.length };

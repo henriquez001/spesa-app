@@ -18,8 +18,9 @@ import { compare, euro, isOld, type Comparison, type PriceState } from "../share
 import { PhotoFlow } from "./photos";
 import { useCatalog } from "./catalog";
 import { PriceSheet, PricesScreen } from "./prices-screen";
+import { SearchScreen } from "./search-screen";
 
-type Tab = "lista" | "prezzi" | "offerte" | "negozi";
+type Tab = "lista" | "prezzi" | "offerte" | "negozi" | "cerca";
 
 export function App() {
   const [token, setToken] = useState<string | null>(() => loadToken());
@@ -192,6 +193,8 @@ function Home({ token }: { token: string }) {
           />
         ) : tab === "prezzi" ? (
           <PricesScreen store={store} onPhoto={() => setPhoto(true)} onEdit={setEditingPrice} />
+        ) : tab === "cerca" ? (
+          <SearchScreen store={store} />
         ) : (
           <Coming tab={tab} />
         )}
@@ -695,13 +698,13 @@ function Toast({ toast, onDone }: { toast: ToastState; onDone: () => void }) {
 
 // ---------------------------------------------------------------- altre schede
 
-const COMING: Record<Exclude<Tab, "lista">, { title: string; text: string }> = {
+const COMING: Record<Exclude<Tab, "lista" | "cerca">, { title: string; text: string }> = {
   prezzi: { title: "Prezzi", text: "Qui fotograferai i cartellini: i prezzi finiranno nel negozio giusto e la lista ti dirà dove conviene. Arriva nella fase 2." },
   offerte: { title: "Offerte", text: "Qui vedrai le offerte dei volantini che corrispondono alla tua lista. Arriva nella fase 4." },
   negozi: { title: "Negozi", text: "Qui sceglierai i tuoi punti vendita e terrai le carte fedeltà. Arriva nella fase 5." },
 };
 
-function Coming({ tab }: { tab: Exclude<Tab, "lista"> }) {
+function Coming({ tab }: { tab: Exclude<Tab, "lista" | "cerca"> }) {
   const c = COMING[tab];
   return (
     <>
@@ -723,6 +726,7 @@ function TabBar({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
     ["prezzi", "Prezzi"],
     ["offerte", "Offerte"],
     ["negozi", "Negozi"],
+    ["cerca", "Cerca"],
   ];
   return (
     <nav class="tabbar" aria-label="Sezioni">
