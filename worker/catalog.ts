@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { bestFor, indexWords, KEYWORDS, parseConadPage, parseOffersPage, type CatalogPrice, type CatalogSource } from "../shared/catalog";
+import { bestFor, eurospinOffersUrl, indexWords, KEYWORDS, lidlOfferLinks, parseConadPage, parseEurospinPage, parseOffersPage, type CatalogPrice, type CatalogSource } from "../shared/catalog";
 import type { StoreId } from "../shared/list";
 import { matches, words } from "../shared/prices";
 
@@ -10,24 +10,24 @@ const UA = "Mozilla/5.0 (compatible; SpesaDiCasa/1.0; listino per uso familiare)
 
 type Task =
   | { source: "conad"; query: string; page: number }
-  | { source: "offerte"; store: OfferStore; url: string };
+  | { source: "offerte"; store: OfferStore; url: string }
+  | { source: "lidl-home" }
+  | { source: "euro"; page: number };
 
 type OfferStore = "lidl" | "euro" | "oasi";
 
 const OFFER_SOURCE: Record<OfferStore, CatalogSource> = { lidl: "lidl-offerte", euro: "euro-offerte", oasi: "oasi-offerte" };
+const EURO_MAX_PAGES = 10; // oggi le offerte Eurospin sono circa 60, 12 per pagina
 
 /**
- * Le pagine delle offerte settimanali di ogni catena, lette una volta per notte.
- * Si riempiono solo con indirizzi provati davvero: una catena senza pagine non entra nel giro.
+ * Le offerte delle catene, lette una volta per notte, provate sulle pagine vere il 2026-11-02:
+ * - Lidl: dalla home si prendono le pagine della settimana (".../frutta-e-verdura-kw-44-26/a10105788"),
+ *   perché l'indirizzo cambia ogni settimana; ogni pagina ha le schede in data-grid-data.
+ * - Eurospin: l'elenco prodotti filtrato sulle promozioni, pagina per pagina.
+ * - Oasi: i volantini sono sfogliabili Calameo per punto vendita, senza dati leggibili: per ora no.
  */
-export const OFFER_PAGES: Record<OfferStore, string[]> = {
-  lidl: [],
-  euro: [],
-  oasi: [],
-};
-
 function offerTasks(): Task[] {
-  return (Object.keys(OFFER_PAGES) as OfferStore[]).flatMap((store) => OFFER_PAGES[store].map((url): Task => ({ source: "offerte", store, url })));
+  return [{ source: "lidl-home" }, { source: "euro", page: 1 }];
 }
 
 /**
@@ -81,25 +81,63 @@ export class Catalog extends DurableObject<Env> {
     sql.exec("DELETE FROM queue WHERE n = ?", row.n);
     const task = JSON.parse(row.task) as Task;
     try {
-      const { prices: found, cards } = task.source === "conad" ? await this.fetchConad(task) : await this.fetchOffers(task);
+      const { prices: found, cards } = await this.fetchTask(task);
       for (const p of found) this.save(p);
-      // Conad: si va avanti finché la pagina ha schede (con o senza prezzo)
+      // Conad ed Eurospin: si va avanti finché la pagina ha schede (con o senza prezzo)
       if (task.source === "conad" && cards > 0 && task.page < MAX_PAGES) this.push({ ...task, page: task.page + 1 });
+      if (task.source === "euro" && cards > 0 && task.page < EURO_MAX_PAGES) this.push({ ...task, page: task.page + 1 });
       if (run) sql.exec("UPDATE runs SET pages = pages + 1, saved = saved + ? WHERE started = ?", found.length, run.started);
     } catch (e) {
       console.error("listino", task, e);
-      const what = task.source === "conad" ? `${task.query} p${task.page}` : task.url;
+      const what = task.source === "conad" ? `${task.query} p${task.page}` : task.source === "offerte" ? task.url : task.source === "euro" ? `eurospin p${task.page}` : "lidl home";
       if (run) sql.exec("UPDATE runs SET errors = errors + 1, last_error = ? WHERE started = ?", `${what}: ${String(e).slice(0, 200)}`, run.started);
     }
     await this.ctx.storage.setAlarm(Date.now() + STEP_MS);
   }
 
-  private async fetchOffers(task: Extract<Task, { source: "offerte" }>): Promise<{ prices: CatalogPrice[]; cards: number }> {
-    const res = await fetch(task.url, { headers: { "user-agent": UA, accept: "text/html", "accept-language": "it-IT,it" } });
+  private fetchTask(task: Task): Promise<{ prices: CatalogPrice[]; cards: number }> {
+    switch (task.source) {
+      case "conad":
+        return this.fetchConad(task);
+      case "offerte":
+        return this.fetchOffers(task);
+      case "euro":
+        return this.fetchEurospin(task);
+      case "lidl-home":
+        return this.fetchLidlHome();
+    }
+  }
+
+  private async getHtml(url: string): Promise<string> {
+    const res = await fetch(url, { headers: { "user-agent": UA, accept: "text/html", "accept-language": "it-IT,it" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
+    return res.text();
+  }
+
+  /** La home Lidl: non dà prezzi, mette in coda le pagine offerte di questa settimana. */
+  private async fetchLidlHome(): Promise<{ prices: CatalogPrice[]; cards: number }> {
+    const html = await this.getHtml("https://www.lidl.it/");
+    const links = lidlOfferLinks(html);
+    if (links.length === 0) {
+      this.keepSample("lidl home", html, ["kw-", "href"]);
+      throw new Error("nessuna pagina offerte nella home");
+    }
+    for (const url of links) this.push({ source: "offerte", store: "lidl", url });
+    return { prices: [], cards: 0 };
+  }
+
+  private async fetchOffers(task: Extract<Task, { source: "offerte" }>): Promise<{ prices: CatalogPrice[]; cards: number }> {
+    const html = await this.getHtml(task.url);
     const page = parseOffersPage(html, OFFER_SOURCE[task.store], task.store, Date.now());
-    if (page.prices.length === 0) this.keepSample(`${task.store}`, html, ["ld+json", "data-"]);
+    // le pagine delle offerte future hanno schede ma nessun prezzo valido oggi: il campione serve solo se non c'è nessuna scheda
+    if (page.cards === 0) this.keepSample(`${task.store}`, html, ["ld+json", "data-"]);
+    return page;
+  }
+
+  private async fetchEurospin(task: Extract<Task, { source: "euro" }>): Promise<{ prices: CatalogPrice[]; cards: number }> {
+    const html = await this.getHtml(eurospinOffersUrl(task.page));
+    const page = parseEurospinPage(html, Date.now());
+    if (task.page === 1 && page.prices.length === 0) this.keepSample("eurospin", html, ["product-card", "product-listing"]);
     return page;
   }
 

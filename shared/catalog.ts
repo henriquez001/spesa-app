@@ -22,6 +22,8 @@ export interface CatalogPrice {
   seenAt: number;
   /** fine validità per le offerte, se nota */
   validTo: number | null;
+  /** prezzo riservato a chi ha la carta della catena (es. "Lidl Plus", "Eurospin Family") */
+  card?: string | null;
 }
 
 /** Parole di ricerca per il listino: la spesa di casa più comune. */
@@ -65,6 +67,9 @@ function centsOf(v: unknown): number | null {
 
 /** La quantità scritta nel nome, es. "Latte UHT 1 l" → "1 l". */
 export function qtyFromName(name: string): string | null {
+  // "1.000g" è mille grammi, non un grammo
+  name = name.replace(/(\d)\.(\d{3})(?=\s*(?:g|gr|ml)\b)/gi, "$1$2");
+  if (/^\s*al kg\b/i.test(name)) return "1 kg";
   const m = name.match(/(\d+\s*[x×]\s*)?\d+(?:[.,]\d+)?\s*(kg|g|gr|l|lt|ml|cl|pz|pezzi)\b/i);
   return m ? m[0].replace(/\s+/g, " ").replace(/\bgr\b/i, "g").replace(/\blt\b/i, "l") : null;
 }
@@ -83,7 +88,8 @@ export function fromProductJson(o: Record<string, unknown>, source: CatalogSourc
   // Conad dà la quantità a parte: netQuantity 0.25 + netQuantityUm "KG"
   const nq = Number(o.netQuantity);
   const um = typeof o.netQuantityUm === "string" ? o.netQuantityUm.toLowerCase() : "";
-  const qty = qtyFromName(product) ?? (nq > 0 && /^(kg|g|l|ml|cl|pz)$/.test(um) ? `${String(nq).replace(".", ",")} ${um}` : null);
+  const pack = typeof o.packaging === "string" ? qtyFromName(o.packaging) : null;
+  const qty = qtyFromName(product) ?? pack ?? (nq > 0 && /^(kg|g|l|ml|cl|pz)$/.test(um) ? `${String(nq).replace(".", ",")} ${um}` : null);
   const u = unitFromQty(final, qty);
   return {
     key: `${source}:${typeof code === "string" || typeof code === "number" ? code : product.toLowerCase()}`,
@@ -268,11 +274,102 @@ export function parseOffersPage(html: string, source: CatalogSource, store: Stor
   const text = unescapeHtml(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " "));
   const pageValid = parseValidTo(text, seenAt);
   const out = new Map<string, CatalogPrice>();
-  for (const o of objs) {
+  for (const raw of objs) {
+    const o = lidlProduct(raw, seenAt);
+    if (!o) continue;
     const p = fromProductJson(o, source, store, seenAt);
     if (!p) continue;
-    const own = typeof o.priceValidUntil === "string" ? parseValidTo(o.priceValidUntil, seenAt) : null;
-    out.set(p.key, { ...p, offer: true, validTo: own ?? pageValid });
+    const own = typeof o.validTo === "number" ? o.validTo : typeof o.priceValidUntil === "string" ? parseValidTo(o.priceValidUntil, seenAt) : null;
+    out.set(p.key, { ...p, offer: true, validTo: own ?? pageValid, card: typeof o.card === "string" ? o.card : null });
   }
   return { prices: [...out.values()], cards: objs.length };
+}
+
+// ---------------------------------------------------------------- Lidl
+
+/**
+ * Le schede Lidl (attributo data-grid-data) hanno il prezzo in price.price, oppure solo in
+ * lidlPlus[0].price.price quando è riservato a chi ha l'app Lidl Plus; la confezione in
+ * price.packaging.text ("2 kg cassetta", "Al kg") e le date in storeStartDate/storeEndDate (secondi).
+ * Le offerte che partono più avanti ("Da giovedì 5/11") si saltano: si leggono la notte in cui iniziano.
+ * Un oggetto che non è una scheda Lidl passa com'è.
+ */
+function lidlProduct(o: Record<string, unknown>, now: number): Record<string, unknown> | null {
+  if (typeof o.fullTitle !== "string" || !("storeEndDate" in o || "lidlPlus" in o || "regionsPrices" in o)) return o;
+  const start = Number(o.storeStartDate);
+  if (start > 0 && start * 1000 > now) return null;
+  const price = (o.price ?? {}) as Record<string, unknown>;
+  const plus = Array.isArray(o.lidlPlus) ? ((o.lidlPlus[0] as Record<string, unknown> | undefined)?.price as Record<string, unknown> | undefined) : undefined;
+  const own = typeof price.price === "number" ? price.price : null;
+  const value = own ?? (typeof plus?.price === "number" ? plus.price : null);
+  if (value === null) return { ...o, price: null };
+  const packaging = ((own !== null ? price.packaging : plus?.packaging) ?? price.packaging) as { text?: unknown } | undefined;
+  const end = Number(o.storeEndDate);
+  return {
+    productId: o.productId ?? o.itemId,
+    fullTitle: o.fullTitle,
+    price: value,
+    packaging: typeof packaging?.text === "string" ? packaging.text : undefined,
+    validTo: end > 0 ? end * 1000 : undefined,
+    card: own === null ? "Lidl Plus" : undefined,
+  };
+}
+
+/** Lidl cambia ogni settimana gli indirizzi delle pagine offerte: si prendono dalla home. */
+const LIDL_NOT_FOOD = /parkside|livarno|esmara|lupilu|ultimate-speed|silvercrest|crivit|giocattoli|fiori-e-piante|moda|auto-e-garage|casa-e-arredo|fai-da-te|max-mila/;
+
+export function lidlOfferLinks(html: string): string[] {
+  const out = new Set<string>();
+  const re = /href="(\/c\/(?:store\/)?([a-z0-9-]+)-kw-\d{1,2}-\d{2}\/a\d+)"/g;
+  for (let m = re.exec(html); m; m = re.exec(html)) if (!LIDL_NOT_FOOD.test(m[2])) out.add(`https://www.lidl.it${m[1]}`);
+  return [...out];
+}
+
+// ---------------------------------------------------------------- Eurospin
+
+/** L'elenco delle offerte Eurospin (tutte le promozioni), 12 schede per pagina. */
+export function eurospinOffersUrl(page: number): string {
+  return `https://www.eurospin.com/it-it/prodotti/?by_typeOffer=offerta&by_typeOffer=family&by_typeOffer=limitati&by_typeOffer=ribassati&page=${page}`;
+}
+
+/**
+ * Le schede prodotto Eurospin sono HTML (li.product-card con data-product-code): titolo, marchio,
+ * confezione, prezzo scontato, prezzo pieno e "Fino al 30/11/2026". Il modello vuoto dentro
+ * <template> non conta. "Prezzo Family" è il prezzo per chi ha la carta Eurospin Family.
+ */
+export function parseEurospinPage(html: string, seenAt: number): { prices: CatalogPrice[]; cards: number } {
+  const body = html.replace(/<template[\s\S]*?<\/template>/gi, "");
+  const parts = body.split(/<li\b(?=[^>]*\bdata-product-code=)/i).slice(1);
+  const text = (chunk: string, cls: string): string => {
+    const m = chunk.match(new RegExp(`class="[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)</(?:p|span|h3|div)>`));
+    return m ? unescapeHtml(m[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim() : "";
+  };
+  const out = new Map<string, CatalogPrice>();
+  for (const part of parts) {
+    const li = part.split(/<\/li>/i)[0];
+    const code = li.match(/data-product-code="([^"]+)"/)?.[1];
+    const title = text(li, "product-card__title");
+    const cents = toCents(text(li, "product-card__price-current"));
+    if (!code || !title || !cents) continue;
+    const brand = text(li, "product-card__brand");
+    const product = normalizeName(brand && !title.toLowerCase().includes(brand.toLowerCase()) ? `${title} ${brand}` : title);
+    const qty = qtyFromName(product) ?? qtyFromName(text(li, "product-card__meta"));
+    const u = unitFromQty(cents, qty);
+    const until = li.match(/badge-date-value[^>]*>\s*([^<]+)/)?.[1];
+    out.set(`euro-offerte:${code}`, {
+      key: `euro-offerte:${code}`,
+      source: "euro-offerte",
+      store: "euro",
+      product,
+      cents,
+      qty,
+      unitCents: u?.unitCents ?? null,
+      unit: u?.unit ?? null,
+      offer: true,
+      seenAt,
+      validTo: until ? parseValidTo(`fino al ${until}`, seenAt) : null,
+      card: /Prezzo Family/i.test(li) ? "Eurospin Family" : null,
+    });
+  }
+  return { prices: [...out.values()], cards: parts.length };
 }
