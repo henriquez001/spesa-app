@@ -20,6 +20,10 @@ In fotocamera scegli "Scontrino" invece di "Etichetta". Uno scontrino lungo si f
 
 Per restare nel piano gratuito di Workers AI (10.000 "neuroni" al giorno per tutto l'account Cloudflare, azzerati a mezzanotte UTC) l'app si ferma a **8.000 neuroni al giorno** (`AI_DAILY_NEURONS` in `wrangler.jsonc`). Un contatore unico per l'account prenota il costo massimo di ogni lettura e poi registra quello vero. Al massimo un cartellino costa 49 neuroni e una foto di scontrino 184: nel peggiore dei casi sono circa 160 cartellini o 43 foto di scontrino al giorno, di solito di più. Quando il tetto è raggiunto l'app lo dice e si può scrivere il prezzo a mano.
 
+## Listino online
+
+Ogni notte alle 2:00 UTC un cron legge il catalogo di spesaonline.conad.it per circa 95 parole della spesa comune, una pagina ogni 3 secondi (prezzi nazionali Conad, non del singolo punto vendita). I prezzi stanno in un Durable Object unico (`Catalog`) e la lista li usa per il confronto quando la famiglia non ha un prezzo suo recente. Stato dell'ultimo giro: `/api/listino`; per avviarlo a mano: `/api/listino/aggiorna`.
+
 ## Requisiti
 
 - Node.js 20 o più recente
