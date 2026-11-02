@@ -10,11 +10,18 @@
     "run_worker_first": ["/api/*"]
   },
   "durable_objects": {
-    "bindings": [{ "name": "FAMILY", "class_name": "FamilyList" }]
+    "bindings": [
+      { "name": "FAMILY", "class_name": "FamilyList" },
+      { "name": "AI_BUDGET", "class_name": "AiBudget" }
+    ]
   },
   // Workers AI legge le foto dei cartellini (modello di visione, cambiabile qui sotto)
   "ai": { "binding": "AI" },
-  "vars": { "VISION_MODEL": "@cf/meta/llama-3.2-11b-vision-instruct" },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FamilyList"] }],
+  // AI_DAILY_NEURONS: tetto giornaliero per restare nella quota gratuita (10.000 neuroni al giorno per account)
+  "vars": { "VISION_MODEL": "@cf/meta/llama-3.2-11b-vision-instruct", "AI_DAILY_NEURONS": "8000" },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["FamilyList"] },
+    { "tag": "v2", "new_sqlite_classes": ["AiBudget"] }
+  ],
   "observability": { "enabled": true }
 }
