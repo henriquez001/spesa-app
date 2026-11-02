@@ -2,7 +2,7 @@
 
 Web app (PWA) per la spesa di famiglia: una lista condivisa che si aggiorna in tempo reale su tutti i telefoni e funziona anche senza rete. Gira su Cloudflare (un Worker che serve l'app e un Durable Object per ogni famiglia).
 
-Questa è la **fase 1**: lista condivisa. Prezzi da foto, ripartizione tra negozi, volantini e carte fedeltà arrivano nelle fasi successive.
+Fasi pronte: **1** lista condivisa, **2** prezzi dalle foto dei cartellini (letti con Workers AI). Ripartizione tra negozi, volantini e carte fedeltà arrivano nelle fasi successive.
 
 ## Cosa fa la fase 1
 
@@ -49,7 +49,7 @@ npm run typecheck  # controllo dei tipi di app e Worker
 | Cartella | Contenuto |
 | --- | --- |
 | `shared/` | Regole comuni ad app e server: articoli, operazioni, unione delle modifiche |
-| `worker/` | Worker Cloudflare (API) e Durable Object della famiglia (SQLite + WebSocket) |
+| `worker/` | Worker Cloudflare (API) e Durable Object della famiglia (SQLite + WebSocket + lettura foto con Workers AI) |
 | `src/` | App Preact: schermate, stile Scontrino, sincronizzazione offline |
 | `public/` | Manifest, service worker e icone della PWA |
 | `tests/` | Test con Vitest |

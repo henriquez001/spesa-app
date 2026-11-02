@@ -7,6 +7,7 @@ import {
   type ServerMessage,
   type StoreId,
 } from "../shared/list";
+import type { Price, PriceState } from "../shared/prices";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -15,8 +16,11 @@ export type Status = "online" | "connecting" | "offline";
 
 interface Saved {
   items: ListState;
+  prices: PriceState;
   pending: Op[];
 }
+
+export type NewPrice = Omit<Price, "id" | "deleted" | "createdAt" | "updatedAt">;
 
 /**
  * Tiene la lista sul telefono e la sincronizza con il Durable Object della famiglia.
@@ -25,6 +29,7 @@ interface Saved {
  */
 export class ListStore {
   items: ListState = {};
+  prices: PriceState = {};
   pending: Op[] = [];
   status: Status = "connecting";
   private ws: WebSocket | null = null;
@@ -40,6 +45,7 @@ export class ListStore {
   ) {
     const saved = this.read();
     this.items = saved.items;
+    this.prices = saved.prices;
     this.pending = saved.pending;
   }
 
@@ -65,10 +71,27 @@ export class ListStore {
     this.commit({ ...current, ...patch, updatedAt });
   }
 
+  addPrices(list: NewPrice[]): void {
+    const now = Date.now();
+    this.commitAll(list.map((p) => ({ opId: randomId(), price: { ...p, id: randomId(), deleted: false, createdAt: now, updatedAt: now } })));
+  }
+
+  updatePrice(id: string, patch: Partial<Omit<Price, "id" | "createdAt" | "updatedAt">>): void {
+    const current = this.prices[id];
+    if (!current) return;
+    const updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+    this.commitAll([{ opId: randomId(), price: { ...current, ...patch, updatedAt } }]);
+  }
+
   private commit(item: Item): void {
-    const op: Op = { opId: randomId(), item };
-    applyOp(this.items, op);
-    this.pending.push(op);
+    this.commitAll([{ opId: randomId(), item }]);
+  }
+
+  private commitAll(ops: Op[]): void {
+    for (const op of ops) {
+      applyOp(this, op);
+      this.pending.push(op);
+    }
     this.save();
     this.flush();
     this.emit();
@@ -122,11 +145,12 @@ export class ListStore {
     }
     let changed = false;
     if (msg.t === "snapshot") {
-      for (const item of msg.items) changed = applyOp(this.items, { opId: "snapshot", item }) || changed;
+      for (const item of msg.items) changed = applyOp(this, { opId: "snapshot", item }) || changed;
+      for (const price of msg.prices ?? []) changed = applyOp(this, { opId: "snapshot", price }) || changed;
       // le modifiche locali non ancora confermate restano valide sopra l'istantanea
-      for (const op of this.pending) changed = applyOp(this.items, op) || changed;
+      for (const op of this.pending) changed = applyOp(this, op) || changed;
     } else if (msg.t === "ops") {
-      for (const op of msg.ops) changed = applyOp(this.items, op) || changed;
+      for (const op of msg.ops) changed = applyOp(this, op) || changed;
     } else if (msg.t === "ack") {
       const done = new Set(msg.opIds);
       const before = this.pending.length;
@@ -177,17 +201,17 @@ export class ListStore {
       const raw = this.storage?.getItem(this.key());
       if (raw) {
         const s = JSON.parse(raw) as Saved;
-        return { items: s.items ?? {}, pending: s.pending ?? [] };
+        return { items: s.items ?? {}, prices: s.prices ?? {}, pending: s.pending ?? [] };
       }
     } catch {
       // memoria non disponibile o rovinata: si riparte dal server
     }
-    return { items: {}, pending: [] };
+    return { items: {}, prices: {}, pending: [] };
   }
 
   private save(): void {
     try {
-      this.storage?.setItem(this.key(), JSON.stringify({ items: this.items, pending: this.pending }));
+      this.storage?.setItem(this.key(), JSON.stringify({ items: this.items, prices: this.prices, pending: this.pending }));
     } catch {
       // memoria piena o bloccata: la lista resta valida finché l'app è aperta
     }

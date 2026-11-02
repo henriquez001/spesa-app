@@ -3,6 +3,8 @@
 // updatedAt più recente (last-writer-wins), quindi riapplicare la stessa operazione
 // non cambia nulla: è ciò che rende sicura la coda offline.
 
+import { validatePrice, type Price, type PriceState } from "./prices";
+
 export const STORE_IDS = ["lidl", "euro", "conad", "oasi"] as const;
 export type StoreId = (typeof STORE_IDS)[number];
 
@@ -26,35 +28,43 @@ export interface Item {
   updatedAt: number;
 }
 
-export interface Op {
-  opId: string;
-  item: Item;
-}
+/** Un'operazione porta un articolo della lista oppure un prezzo, sempre intero. */
+export type Op = { opId: string; item: Item; price?: undefined } | { opId: string; price: Price; item?: undefined };
 
 export type ListState = Record<string, Item>;
 
+/** Tutto quello che la famiglia condivide. */
+export interface Data {
+  items: ListState;
+  prices: PriceState;
+}
+
 export type ClientMessage = { t: "ops"; ops: Op[] };
 export type ServerMessage =
-  | { t: "snapshot"; items: Item[] }
+  | { t: "snapshot"; items: Item[]; prices: Price[] }
   | { t: "ops"; ops: Op[] }
   | { t: "ack"; opIds: string[] };
 
-/** true se `incoming` deve sostituire `current`. A parità di orario decide un confronto stabile. */
-export function wins(current: Item | undefined, incoming: Item): boolean {
-  if (!current) return true;
-  if (incoming.updatedAt !== current.updatedAt) return incoming.updatedAt > current.updatedAt;
-  return stableKey(incoming) > stableKey(current);
+interface Versioned {
+  updatedAt: number;
 }
 
-function stableKey(i: Item): string {
-  return JSON.stringify([i.deleted, i.done, i.store, i.name]);
+/** true se `incoming` deve sostituire `current`. A parità di orario decide un confronto stabile. */
+export function wins<T extends Versioned>(current: T | undefined, incoming: T): boolean {
+  if (!current) return true;
+  if (incoming.updatedAt !== current.updatedAt) return incoming.updatedAt > current.updatedAt;
+  return JSON.stringify(incoming) > JSON.stringify(current);
 }
 
 /** Applica un'operazione allo stato. Restituisce true se lo stato è cambiato. */
-export function applyOp(state: ListState, op: Op): boolean {
-  const current = state[op.item.id];
-  if (!wins(current, op.item)) return false;
-  state[op.item.id] = op.item;
+export function applyOp(state: Data, op: Op): boolean {
+  if (op.item) {
+    if (!wins(state.items[op.item.id], op.item)) return false;
+    state.items[op.item.id] = op.item;
+    return true;
+  }
+  if (!wins(state.prices[op.price.id], op.price)) return false;
+  state.prices[op.price.id] = op.price;
   return true;
 }
 
@@ -96,8 +106,12 @@ export function validateOp(x: unknown): Op | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
   if (typeof o.opId !== "string" || !/^[A-Za-z0-9_-]{8,40}$/.test(o.opId)) return null;
-  const item = validateItem(o.item);
-  return item ? { opId: o.opId, item } : null;
+  if (o.item !== undefined) {
+    const item = validateItem(o.item);
+    return item ? { opId: o.opId, item } : null;
+  }
+  const price = validatePrice(o.price);
+  return price ? { opId: o.opId, price } : null;
 }
 
 export interface Section {

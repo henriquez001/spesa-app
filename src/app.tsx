@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   counts,
@@ -13,6 +13,10 @@ import {
 import { createFamily, inviteLink, loadToken, saveToken, tokenFromLink } from "./family";
 import { ListStore, safeStorage, type Status } from "./sync";
 import { APP_VERSION, formatVersion, useUpdate } from "./update";
+import { Barcode, Icon, ICONS, Sheet } from "./ui";
+import { compare, euro, isOld, type Comparison, type PriceState } from "../shared/prices";
+import { PhotoFlow } from "./photos";
+import { PriceSheet, PricesScreen } from "./prices-screen";
 
 type Tab = "lista" | "prezzi" | "offerte" | "negozi";
 
@@ -156,6 +160,8 @@ function Home({ token }: { token: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [photo, setPhoto] = useState(false);
+  const [editingPrice, setEditingPrice] = useState<string | null>(null);
 
   function showToast(text: string, undo?: () => void) {
     setToast({ id: Date.now(), text, undo });
@@ -183,6 +189,8 @@ function Home({ token }: { token: string }) {
             onInvite={() => setInviting(true)}
             onToast={showToast}
           />
+        ) : tab === "prezzi" ? (
+          <PricesScreen store={store} onPhoto={() => setPhoto(true)} onEdit={setEditingPrice} />
         ) : (
           <Coming tab={tab} />
         )}
@@ -201,6 +209,25 @@ function Home({ token }: { token: string }) {
         }}
       />
       <InviteSheet open={inviting} token={token} onClose={() => setInviting(false)} />
+      <PriceSheet
+        price={editingPrice ? store.prices[editingPrice] : undefined}
+        store={store}
+        onClose={() => setEditingPrice(null)}
+        onDeleted={(p) => {
+          setEditingPrice(null);
+          showToast(`Eliminato il prezzo di ${p.product}`, () => store.updatePrice(p.id, { deleted: false }));
+        }}
+      />
+      <PhotoFlow
+        open={photo}
+        store={store}
+        onClose={() => setPhoto(false)}
+        onSaved={(n, shop) => {
+          setPhoto(false);
+          setTab("prezzi");
+          showToast(n === 1 ? `Salvato 1 prezzo da ${STORE_NAMES[shop]}` : `Salvati ${n} prezzi da ${STORE_NAMES[shop]}`);
+        }}
+      />
     </div>
   );
 }
@@ -217,6 +244,11 @@ function ListScreen(props: {
   const upd = useUpdate();
   const secs = sections(store.items, trip);
   const { total, done } = counts(store.items);
+  const cmp: Record<string, Comparison> = {};
+  for (const i of Object.values(store.items)) if (!i.deleted) cmp[i.id] = compare(i.name, i.store, store.prices);
+  const todo = Object.values(store.items).filter((i) => !i.deleted && !i.done);
+  const known = todo.filter((i) => cmp[i.id]?.here);
+  const estimate = known.reduce((sum, i) => sum + (cmp[i.id].here?.cents ?? 0), 0);
 
   function clearDone() {
     const ids = Object.values(store.items)
@@ -239,7 +271,7 @@ function ListScreen(props: {
       </header>
 
       {upd.showBanner && <UpdateBanner onUpdate={upd.update} onLater={upd.later} />}
-      <ReceiptCard total={total} done={done} trip={trip} onToggleTrip={props.onToggleTrip} />
+      <ReceiptCard total={total} done={done} estimate={estimate} unpriced={todo.length - known.length} trip={trip} onToggleTrip={props.onToggleTrip} />
       <SyncLine status={store.status} pending={store.pending.length} />
       <AddForm store={store} trip={trip} onToast={props.onToast} />
 
@@ -253,12 +285,12 @@ function ListScreen(props: {
                 {s.store && <span class="dot" style={{ background: `var(--s-${s.store})` }} aria-hidden="true" />}
                 {s.title}
               </h2>
-              <span>{s.items.filter((i) => !i.done).length} DA PRENDERE</span>
+              <span>{subtotal(s.items.filter((i) => !i.done), cmp)}</span>
             </div>
             {s.items.length > 0 ? (
               <ul class="group">
                 {s.items.map((item) => (
-                  <Row key={item.id} item={item} showStore={s.key === "altri"} onToggle={() => store.update(item.id, { done: !item.done })} onEdit={() => props.onEdit(item.id)} />
+                  <Row key={item.id} item={item} cmp={cmp[item.id]} showStore={s.key === "altri"} onToggle={() => store.update(item.id, { done: !item.done })} onEdit={() => props.onEdit(item.id)} />
                 ))}
               </ul>
             ) : (
@@ -324,7 +356,12 @@ function VersionFooter({ check, onCheck }: { check: "idle" | "checking" | "lates
   );
 }
 
-function ReceiptCard(props: { total: number; done: number; trip: StoreId[]; onToggleTrip: (s: StoreId) => void }) {
+function subtotal(items: Item[], cmp: Record<string, Comparison>): string {
+  const sum = items.reduce((t, i) => t + (cmp[i.id]?.here?.cents ?? 0), 0);
+  return sum > 0 ? `${items.length} DA PRENDERE · ${euro(sum)}` : `${items.length} DA PRENDERE`;
+}
+
+function ReceiptCard(props: { total: number; done: number; estimate: number; unpriced: number; trip: StoreId[]; onToggleTrip: (s: StoreId) => void }) {
   const now = new Date();
   const date = now.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
   return (
@@ -345,6 +382,20 @@ function ReceiptCard(props: { total: number; done: number; trip: StoreId[]; onTo
         <span>DA PRENDERE</span>
         <span>{props.total - props.done}</span>
       </div>
+      {props.estimate > 0 && (
+        <>
+          <div class="rline">
+            <span>TOTALE STIMATO</span>
+            <span>{euro(props.estimate)}</span>
+          </div>
+          {props.unpriced > 0 && (
+            <div class="rline">
+              <span>SENZA PREZZO</span>
+              <span>{props.unpriced}</span>
+            </div>
+          )}
+        </>
+      )}
       <fieldset class="trip">
         <legend>Negozi di oggi</legend>
         <div class="chips">
@@ -439,26 +490,56 @@ function AddForm({ store, trip, onToast }: { store: ListStore; trip: StoreId[]; 
   );
 }
 
-function Row({ item, showStore, onToggle, onEdit }: { item: Item; showStore: boolean; onToggle: () => void; onEdit: () => void }) {
+function Row(props: { item: Item; cmp: Comparison | undefined; showStore: boolean; onToggle: () => void; onEdit: () => void }) {
+  const { item, cmp } = props;
+  const here = cmp?.here ?? null;
+  const parts: ComponentChildren[] = [];
+  if (props.showStore && item.store)
+    parts.push(
+      <span class="store-name">
+        <span class="dot" style={{ background: `var(--s-${item.store})` }} aria-hidden="true" />
+        {STORE_NAMES[item.store]}
+      </span>,
+    );
+  if (here && !item.store) parts.push(<span>Più economico da {STORE_NAMES[here.store]}</span>);
+  if (cmp?.elsewhere) parts.push(<span>Nessun prezzo qui, da {STORE_NAMES[cmp.elsewhere.store]} {euro(cmp.elsewhere.cents)}</span>);
+  if (cmp?.best)
+    parts.push(
+      <span>
+        <span class="cmp">−{euro(cmp.best.saving)}</span> vs {STORE_NAMES[cmp.best.other.store]} {euro(cmp.best.other.cents)}
+      </span>,
+    );
+  if (cmp?.cheaper)
+    parts.push(
+      <span class="cheaper">
+        Da {STORE_NAMES[cmp.cheaper.price.store]} {euro(cmp.cheaper.price.cents)}, risparmi {euro(cmp.cheaper.saving)}
+      </span>,
+    );
+  if (here && isOld(here)) parts.push(<span>prezzo del {new Date(here.seenAt).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })}, da verificare</span>);
   return (
     <li class={`row${item.done ? " done" : ""}`}>
-      <button class="check-hit" role="checkbox" aria-checked={item.done} aria-label={item.name} onClick={onToggle}>
+      <button class="check-hit" role="checkbox" aria-checked={item.done} aria-label={item.name} onClick={props.onToggle}>
         <span class="check" aria-hidden="true">
           <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 7.5l2.6 2.6L11 4.6" />
           </svg>
         </span>
       </button>
-      <button class="txt" onClick={onEdit} aria-label={`Modifica ${item.name}`}>
+      <button class="txt" onClick={props.onEdit} aria-label={`Modifica ${item.name}`}>
         <span class="txt-main">
           <span class="name">{item.name}</span>
-          {showStore && item.store && (
+          {parts.length > 0 && (
             <span class="meta">
-              <span class="dot" style={{ background: `var(--s-${item.store})` }} aria-hidden="true" />
-              {STORE_NAMES[item.store]}
+              {parts.map((part, i) => (
+                <Fragment key={i}>
+                  {i > 0 && <span aria-hidden="true">·</span>}
+                  {part}
+                </Fragment>
+              ))}
             </span>
           )}
         </span>
+        {here && <span class="price">{euro(here.cents)}</span>}
         <span class="chev" aria-hidden="true">
           ›
         </span>
@@ -469,63 +550,6 @@ function Row({ item, showStore, onToggle, onEdit }: { item: Item; showStore: boo
 
 // ---------------------------------------------------------------- fogli
 
-function useSheet(open: boolean): { mounted: boolean; shown: boolean } {
-  const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      // un fotogramma dopo, così la transizione parte dalla posizione chiusa
-      const r = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-      return () => cancelAnimationFrame(r);
-    }
-    setShown(false);
-    const t = setTimeout(() => setMounted(false), 400);
-    return () => clearTimeout(t);
-  }, [open]);
-  return { mounted, shown };
-}
-
-function Sheet(props: { open: boolean; title: string; onClose: () => void; action?: ComponentChildren; children: ComponentChildren }) {
-  const { mounted, shown } = useSheet(props.open);
-  const box = useRef<HTMLDivElement>(null);
-  const opener = useRef<Element | null>(null);
-
-  useEffect(() => {
-    if (!props.open) return;
-    opener.current = document.activeElement;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onClose();
-    };
-    addEventListener("keydown", onKey);
-    return () => {
-      removeEventListener("keydown", onKey);
-      (opener.current as HTMLElement | null)?.focus?.();
-    };
-  }, [props.open]);
-
-  useEffect(() => {
-    if (shown) box.current?.querySelector<HTMLElement>("[data-autofocus], button")?.focus();
-  }, [shown]);
-
-  if (!mounted) return null;
-  return (
-    <>
-      <div class={`scrim${shown ? " on" : ""}`} onClick={props.onClose} aria-hidden="true" />
-      <div ref={box} class={`sheet${shown ? " on" : ""}`} role="dialog" aria-modal="true" aria-label={props.title}>
-        <div class="grab" aria-hidden="true" />
-        <div class="sh">
-          <button class="link" onClick={props.onClose}>
-            Annulla
-          </button>
-          <b>{props.title}</b>
-          <span class="sh-action">{props.action}</span>
-        </div>
-        {props.children}
-      </div>
-    </>
-  );
-}
 
 function EditSheet(props: {
   item: Item | undefined;
@@ -709,46 +733,3 @@ function TabBar({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
 }
 
 // ---------------------------------------------------------------- piccoli pezzi
-
-const ICONS = {
-  lista: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
-  prezzi: "M3 12l9-9h8v8l-9 9zM16 8h.01",
-  offerte: "M4 4h16v16H4zM4 9h16M9 4v16",
-  negozi: "M3 9l2-5h14l2 5M4 9v11h16V9M3 9h18",
-  refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
-  invite: "M15 19a6 6 0 0 0-12 0M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M16 11h6",
-};
-
-function Icon({ d }: { d: string }) {
-  return (
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d={d} />
-    </svg>
-  );
-}
-
-const BARS = (() => {
-  let x = 0;
-  let r = 7;
-  const out: [number, number][] = [];
-  for (let i = 0; i < 40; i++) {
-    r = (r * 9301 + 49297) % 233280;
-    const w = 1 + (r % 3);
-    if (i % 2 === 0) out.push([x, w]);
-    x += w * 1.15;
-  }
-  return out;
-})();
-
-function Barcode({ label }: { label: string }) {
-  return (
-    <div class="barcode" aria-hidden="true">
-      <svg viewBox="0 0 120 30" preserveAspectRatio="none">
-        {BARS.map(([x, w]) => (
-          <rect key={x} x={x} y={0} width={w} height={30} fill="currentColor" />
-        ))}
-      </svg>
-      <span>{label}</span>
-    </div>
-  );
-}
