@@ -16,6 +16,7 @@ import { APP_VERSION, formatVersion, useUpdate } from "./update";
 import { Barcode, Icon, ICONS, Sheet } from "./ui";
 import { compare, euro, isOld, type Comparison, type PriceState } from "../shared/prices";
 import { PhotoFlow } from "./photos";
+import { useCatalog } from "./catalog";
 import { PriceSheet, PricesScreen } from "./prices-screen";
 
 type Tab = "lista" | "prezzi" | "offerte" | "negozi";
@@ -243,10 +244,12 @@ function ListScreen(props: {
 }) {
   const { store, trip } = props;
   const upd = useUpdate();
+  const catalogPrices = useCatalog(store.token, store.items);
   const secs = sections(store.items, trip);
   const { total, done } = counts(store.items);
   const cmp: Record<string, Comparison> = {};
-  for (const i of Object.values(store.items)) if (!i.deleted) cmp[i.id] = compare(i.name, i.store, store.prices);
+  const all = { ...catalogPrices, ...store.prices };
+  for (const i of Object.values(store.items)) if (!i.deleted) cmp[i.id] = compare(i.name, i.store, all);
   const todo = Object.values(store.items).filter((i) => !i.deleted && !i.done);
   const known = todo.filter((i) => cmp[i.id]?.here);
   const estimate = known.reduce((sum, i) => sum + (cmp[i.id].here?.cents ?? 0), 0);

@@ -22,6 +22,8 @@ export interface Price {
   deleted: boolean;
   createdAt: number;
   updatedAt: number;
+  /** solo per i prezzi del listino online (non sincronizzati): da dove vengono */
+  source?: string;
 }
 
 export type PriceState = Record<string, Price>;
@@ -206,13 +208,17 @@ export function matches(itemName: string, product: string): boolean {
   return need.every((w) => have.some((h) => h === w || stem(h) === stem(w) || (h.length >= 4 && w.startsWith(h))));
 }
 
-/** Per ogni negozio, il prezzo più recente che corrisponde all'articolo. */
-export function pricesFor(itemName: string, prices: PriceState): Partial<Record<StoreId, Price>> {
+/**
+ * Per ogni negozio, il prezzo più recente che corrisponde all'articolo.
+ * Un prezzo visto dalla famiglia (cartellino o scontrino) vince sul listino online finché non è vecchio.
+ */
+export function pricesFor(itemName: string, prices: PriceState, now = Date.now()): Partial<Record<StoreId, Price>> {
   const out: Partial<Record<StoreId, Price>> = {};
+  const rank = (p: Price) => (!p.source && !isOld(p, now) ? 1 : 0);
   for (const p of Object.values(prices)) {
     if (p.deleted || !matches(itemName, p.product)) continue;
     const cur = out[p.store];
-    if (!cur || p.seenAt > cur.seenAt) out[p.store] = p;
+    if (!cur || rank(p) > rank(cur) || (rank(p) === rank(cur) && p.seenAt > cur.seenAt)) out[p.store] = p;
   }
   return out;
 }
