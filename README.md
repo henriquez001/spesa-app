@@ -2,7 +2,7 @@
 
 Web app (PWA) per la spesa di famiglia: una lista condivisa che si aggiorna in tempo reale su tutti i telefoni e funziona anche senza rete. Gira su Cloudflare (un Worker che serve l'app e un Durable Object per ogni famiglia).
 
-Fasi pronte: **1** lista condivisa, **2** prezzi dalle foto dei cartellini (letti con Workers AI). Ripartizione tra negozi, volantini e carte fedeltà arrivano nelle fasi successive.
+Fasi pronte: **1** lista condivisa, **2** prezzi dalle foto dei cartellini e degli scontrini (letti con Workers AI). Ripartizione tra negozi, volantini e carte fedeltà arrivano nelle fasi successive.
 
 ## Cosa fa la fase 1
 
@@ -11,6 +11,14 @@ Fasi pronte: **1** lista condivisa, **2** prezzi dalle foto dei cartellini (lett
 - "Negozi di oggi": scegli dove vai e la lista mette prima quelle sezioni.
 - Senza rete le modifiche restano sul telefono e partono appena torna la connessione.
 - Si installa sulla schermata Home (Android: menu ⋮ → Installa app; iPhone: Condividi → Aggiungi alla schermata Home).
+
+## Scontrini
+
+In fotocamera scegli "Scontrino" invece di "Etichetta". Uno scontrino lungo si fotografa in più pezzi dall'alto in basso: le righe ripetute dove le foto si sovrappongono si tolgono da sole. Nella revisione ogni riga mostra il testo stampato e il nome capito; gli sconti si tolgono dal prodotto sopra, la busta non si salva, e gli articoli ancora da prendere che compaiono nello scontrino vengono spuntati.
+
+## Tetto alle letture con l'AI
+
+Per restare nel piano gratuito di Workers AI (10.000 "neuroni" al giorno per tutto l'account Cloudflare, azzerati a mezzanotte UTC) l'app si ferma a **8.000 neuroni al giorno** (`AI_DAILY_NEURONS` in `wrangler.jsonc`). Un contatore unico per l'account prenota il costo massimo di ogni lettura e poi registra quello vero. Al massimo un cartellino costa 49 neuroni e una foto di scontrino 184: nel peggiore dei casi sono circa 160 cartellini o 43 foto di scontrino al giorno, di solito di più. Quando il tetto è raggiunto l'app lo dice e si può scrivere il prezzo a mano.
 
 ## Requisiti
 

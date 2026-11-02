@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_OPS_PER_MESSAGE, validateOp, wins, type Item, type Op, type ServerMessage } from "../shared/list";
 import { parseReading, READING_PROMPT, type Price, type Reading } from "../shared/prices";
+import { parseReceipt, RECEIPT_PROMPT, type Receipt } from "../shared/receipt";
+import { DEFAULT_DAILY_NEURONS, MAX_INPUT_TOKENS, neurons, worstCase } from "../shared/budget";
 
 const TOMBSTONE_TTL = 30 * 24 * 60 * 60 * 1000; // gli elementi eliminati si tengono 30 giorni, per i telefoni rimasti offline
 const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -57,9 +59,16 @@ export class FamilyList extends DurableObject<Env> {
     this.ctx.storage.sql.exec("DELETE FROM usage WHERE day < ?", new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10));
 
     try {
+      if (new URL(request.url).searchParams.get("tipo") === "scontrino") {
+        const receipt = await readReceipt(this.env, bytes);
+        return json(receipt ? { receipt } : { receipt: null, error: "Non riesco a leggere le righe: prova una foto più vicina e dritta." });
+      }
       const reading = await readLabel(this.env, bytes);
       return json({ reading });
     } catch (e) {
+      if (e instanceof QuotaReached) {
+        return json({ reading: null, receipt: null, error: "Per oggi le letture gratuite sono finite: riprendono domani. Intanto puoi scrivere il prezzo a mano." }, 429);
+      }
       console.error("lettura non riuscita", e);
       return json({ reading: null, error: "Non sono riuscito a leggere la foto." });
     }
@@ -144,18 +153,52 @@ export class FamilyList extends DurableObject<Env> {
 
 /** Chiede al modello di visione di leggere il cartellino. */
 export async function readLabel(env: Env, bytes: Uint8Array): Promise<Reading | null> {
+  return parseReading(await askVision(env, bytes, READING_PROMPT, 300));
+}
+
+/** Chiede al modello di visione tutte le righe di uno scontrino. */
+export async function readReceipt(env: Env, bytes: Uint8Array): Promise<Receipt | null> {
+  return parseReceipt(await askVision(env, bytes, RECEIPT_PROMPT, 2500));
+}
+
+/** Il tetto giornaliero dell'AI è raggiunto: nessuna lettura fino a domani (giorno UTC). */
+export class QuotaReached extends Error {}
+
+function dailyLimit(env: Env): number {
+  const n = Number(env.AI_DAILY_NEURONS);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 10_000) : DEFAULT_DAILY_NEURONS;
+}
+
+/** Prenota il costo massimo, chiama il modello e registra il costo vero. */
+async function askVision(env: Env, bytes: Uint8Array, prompt: string, maxTokens: number): Promise<string> {
+  const budget = env.AI_BUDGET.get(env.AI_BUDGET.idFromName("account"));
+  const reserved = worstCase(maxTokens);
+  const r = await budget.reserve(reserved, dailyLimit(env));
+  if (!r.ok) throw new QuotaReached();
+  let actual = reserved;
+  try {
+    const { text, usage } = await runVision(env, bytes, prompt, maxTokens);
+    // se il modello non dice quanti token ha usato, si stima l'uscita dalla lunghezza del testo
+    actual = usage ? neurons(usage.prompt_tokens, usage.completion_tokens) : neurons(MAX_INPUT_TOKENS, Math.ceil(text.length / 3));
+    return text;
+  } finally {
+    await budget.settle(r.day, reserved, Math.min(actual, reserved));
+  }
+}
+
+async function runVision(env: Env, bytes: Uint8Array, prompt: string, maxTokens: number): Promise<{ text: string; usage: { prompt_tokens: number; completion_tokens: number } | null }> {
   const model = (env.VISION_MODEL || DEFAULT_MODEL) as Parameters<Ai["run"]>[0];
   const input = {
     messages: [
       {
         role: "user",
         content: [
-          { type: "text", text: READING_PROMPT },
+          { type: "text", text: prompt },
           { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64(bytes)}` } },
         ],
       },
     ],
-    max_tokens: 300,
+    max_tokens: maxTokens,
     temperature: 0,
   };
   let out: unknown;
@@ -167,8 +210,11 @@ export async function readLabel(env: Env, bytes: Uint8Array): Promise<Reading | 
     await env.AI.run(model, { prompt: "agree" } as never);
     out = await env.AI.run(model, input as never);
   }
-  const text = typeof out === "object" && out && "response" in out ? String((out as { response: unknown }).response) : String(out ?? "");
-  return parseReading(text);
+  const o = (typeof out === "object" && out ? out : {}) as { response?: unknown; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
+  const text = "response" in o ? String(o.response) : String(out ?? "");
+  const u = o.usage;
+  const usage = u && Number.isFinite(u.prompt_tokens) && Number.isFinite(u.completion_tokens) ? { prompt_tokens: Number(u.prompt_tokens), completion_tokens: Number(u.completion_tokens) } : null;
+  return { text, usage };
 }
 
 function base64(bytes: Uint8Array): string {

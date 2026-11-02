@@ -1,5 +1,6 @@
 import { FAMILY_TOKEN, randomId } from "../shared/list";
 export { FamilyList } from "./family";
+export { AiBudget } from "./budget";
 
 // Il Worker serve la web app (cartella dist) e le API della lista.
 // Ogni famiglia ha un codice segreto casuale: chi ha il link d'invito può usare la lista.

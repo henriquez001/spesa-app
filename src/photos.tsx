@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { randomId, STORE_IDS, STORE_NAMES, type StoreId } from "../shared/list";
-import { fileToJpeg, fromReading, isSavable, problem, readShot, toJpeg, toNewPrice, perUnit, unitOf, type Shot } from "./photo";
-import { safeStorage, type ListStore } from "./sync";
+import { fileToJpeg, fromReading, isSavable, LABEL_SIDE, problem, readReceiptPart, readShot, RECEIPT_SIDE, toJpeg, toNewPrice, perUnit, unitOf, type Part, type Shot } from "./photo";
+import { ReceiptReview } from "./receipt-review";
+import { safeStorage, type ListStore, type NewPrice } from "./sync";
 import { Icon, ICONS, Sheet } from "./ui";
 
 // Fotografare i prezzi: scelta del negozio, scatti in serie (G3), revisione in elenco (R2).
@@ -14,21 +15,28 @@ function lastStore(): StoreId {
 }
 
 type Stage = "pick" | "camera" | "review";
+export type Mode = "etichetta" | "scontrino";
 
-export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () => void; onSaved: (n: number, store: StoreId) => void }) {
+export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () => void; onSaved: (n: number, store: StoreId, ticked: number) => void }) {
   const [stage, setStage] = useState<Stage>("pick");
+  const [mode, setMode] = useState<Mode>("etichetta");
   const [shop, setShop] = useState<StoreId>(lastStore);
   const [shots, setShots] = useState<Shot[]>([]);
+  const [parts, setParts] = useState<Part[]>([]);
   const shotsRef = useRef<Shot[]>([]);
   shotsRef.current = shots;
+  const partsRef = useRef<Part[]>([]);
+  partsRef.current = parts;
 
   useEffect(() => {
     if (props.open) {
       setStage("pick");
+      setMode("etichetta");
       setShop(lastStore());
     } else {
-      for (const s of shotsRef.current) URL.revokeObjectURL(s.url);
+      for (const s of [...shotsRef.current, ...partsRef.current]) URL.revokeObjectURL(s.url);
       setShots([]);
+      setParts([]);
     }
   }, [props.open]);
 
@@ -36,6 +44,7 @@ export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () 
   useEffect(() => {
     const retry = () => {
       for (const s of shotsRef.current) if (s.status === "failed" && !s.reading) read(s);
+      for (const p of partsRef.current) if (p.status === "failed") readPart(p);
     };
     addEventListener("online", retry);
     return () => removeEventListener("online", retry);
@@ -49,6 +58,29 @@ export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () 
     patch(shot.id, (s) => ({ ...s, status: "reading" }));
     const { reading, error } = await readShot(props.store.token, shot.blob);
     patch(shot.id, (s) => fromReading(s, reading, error));
+  }
+
+  function patchPart(id: string, change: Partial<Part>) {
+    setParts((list) => list.map((p) => (p.id === id ? { ...p, ...change } : p)));
+  }
+
+  async function readPart(part: Part) {
+    patchPart(part.id, { status: "reading", error: undefined });
+    const { receipt, error } = await readReceiptPart(props.store.token, part.blob);
+    patchPart(part.id, receipt ? { status: "done", receipt } : { status: "failed", error, receipt: null });
+  }
+
+  function addPart(blob: Blob) {
+    const part: Part = { id: randomId(), url: URL.createObjectURL(blob), blob, status: "reading", receipt: null };
+    setParts((list) => [...list, part]);
+    readPart(part);
+  }
+
+  function saveReceipt(prices: NewPrice[], tick: string[], where: StoreId) {
+    if (prices.length === 0) return;
+    props.store.addPrices(prices);
+    for (const id of tick) props.store.update(id, { done: true });
+    props.onSaved(prices.length, where, tick.length);
   }
 
   function addShot(blob: Blob) {
@@ -75,7 +107,7 @@ export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () 
     } catch {
       // nessun problema: la prossima volta si sceglie a mano
     }
-    props.onSaved(ready.length, shop);
+    props.onSaved(ready.length, shop, 0);
   }
 
   if (!props.open) return null;
@@ -83,9 +115,28 @@ export function PhotoFlow(props: { open: boolean; store: ListStore; onClose: () 
     <>
       <StorePicker open={stage === "pick"} value={shop} onChange={setShop} onClose={props.onClose} onNext={() => setStage("camera")} />
       {stage === "camera" && (
-        <Camera shop={shop} shots={shots} onShot={addShot} onReview={() => setStage("review")} onClose={props.onClose} />
+        <Camera
+          shop={shop}
+          mode={mode}
+          onMode={setMode}
+          thumbs={mode === "scontrino" ? parts.map((p) => ({ id: p.id, url: p.url, status: p.status, label: p.status === "reading" ? "…" : p.status === "done" ? `${p.receipt?.lines.length ?? 0} r.` : "?" })) : shots.map((s) => ({ id: s.id, url: s.url, status: s.status, label: s.status === "reading" ? "…" : s.price ? `${s.price} €` : "?" }))}
+          unsaved={shots.length + parts.length}
+          onShot={mode === "scontrino" ? addPart : addShot}
+          onReview={() => setStage("review")}
+          onClose={props.onClose}
+        />
       )}
-      {stage === "review" && (
+      {stage === "review" && mode === "scontrino" && (
+        <ReceiptReview
+          parts={parts}
+          shop={shop}
+          items={Object.values(props.store.items)}
+          onBack={() => setStage("camera")}
+          onRetry={(p) => readPart(p)}
+          onSave={saveReceipt}
+        />
+      )}
+      {stage === "review" && mode === "etichetta" && (
         <Review
           shop={shop}
           shots={shots}
@@ -130,7 +181,28 @@ function StorePicker(props: { open: boolean; value: StoreId; onChange: (s: Store
 
 // ---------------------------------------------------------------- passo 2: scatti in serie
 
-function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void; onReview: () => void; onClose: () => void }) {
+interface Thumb {
+  id: string;
+  url: string;
+  status: Shot["status"];
+  label: string;
+}
+
+const MODES: { id: Mode; label: string }[] = [
+  { id: "etichetta", label: "Etichetta" },
+  { id: "scontrino", label: "Scontrino" },
+];
+
+function Camera(props: {
+  shop: StoreId;
+  mode: Mode;
+  onMode: (m: Mode) => void;
+  thumbs: Thumb[];
+  unsaved: number;
+  onShot: (b: Blob) => void;
+  onReview: () => void;
+  onClose: () => void;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const thumbs = useRef<HTMLDivElement>(null);
@@ -163,7 +235,7 @@ function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void
 
   useEffect(() => {
     thumbs.current?.scrollTo({ left: thumbs.current.scrollWidth });
-  }, [props.shots.length]);
+  }, [props.thumbs.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -177,14 +249,14 @@ function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void
     const v = video.current;
     if (!v || camera !== "on" || !v.videoWidth) return;
     setFlash((n) => n + 1);
-    props.onShot(await toJpeg(v, v.videoWidth, v.videoHeight));
+    props.onShot(await toJpeg(v, v.videoWidth, v.videoHeight, side));
   }
 
   async function pick(e: Event) {
     const files = Array.from((e.currentTarget as HTMLInputElement).files ?? []);
     for (const f of files) {
       try {
-        props.onShot(await fileToJpeg(f));
+        props.onShot(await fileToJpeg(f, side));
       } catch {
         // file non leggibile come immagine: lo saltiamo
       }
@@ -193,17 +265,19 @@ function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void
   }
 
   function close() {
-    if (props.shots.length > 0) setConfirm(true);
+    if (props.unsaved > 0) setConfirm(true);
     else props.onClose();
   }
 
-  const n = props.shots.length;
+  const side = props.mode === "scontrino" ? RECEIPT_SIDE : LABEL_SIDE;
+  const n = props.thumbs.length;
+  const u = props.unsaved;
   return (
     <div class="cam" role="dialog" aria-modal="true" aria-label={`Fotocamera, ${STORE_NAMES[props.shop]}`}>
       <video ref={video} class="cam-video" playsInline muted aria-hidden="true" />
       {camera === "on" && (
-        <div class="cam-frame" aria-hidden="true">
-          <span>Inquadra il cartellino del prezzo</span>
+        <div class={`cam-frame${props.mode === "scontrino" ? " tall" : ""}`} aria-hidden="true">
+          <span>{props.mode === "scontrino" ? "Inquadra lo scontrino. Se è lungo, fallo in più foto dall'alto in basso" : "Inquadra il cartellino del prezzo"}</span>
         </div>
       )}
       {camera === "off" && (
@@ -229,11 +303,18 @@ function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void
 
       <div class="cam-bottom">
         <div class="cam-thumbs" ref={thumbs} aria-label="Scatti fatti">
-          {props.shots.map((s) => (
+          {props.thumbs.map((s) => (
             <div key={s.id} class={`cam-thumb ${s.status}`}>
               <img src={s.url} alt="" />
-              <span>{s.status === "reading" ? "…" : s.price ? `${s.price} €` : "?"}</span>
+              <span>{s.label}</span>
             </div>
+          ))}
+        </div>
+        <div class="camseg" role="group" aria-label="Cosa fotografi">
+          {MODES.map((m) => (
+            <button key={m.id} class={props.mode === m.id ? "on" : ""} aria-pressed={props.mode === m.id} onClick={() => props.onMode(m.id)}>
+              {m.label}
+            </button>
           ))}
         </div>
         <div class="cam-row">
@@ -251,7 +332,7 @@ function Camera(props: { shop: StoreId; shots: Shot[]; onShot: (b: Blob) => void
       {confirm && (
         <div class="cam-confirm" role="alertdialog" aria-modal="true" aria-labelledby="conf-t">
           <div class="cam-confirm-box">
-            <b id="conf-t">{n === 1 ? "Hai 1 scatto non salvato" : `Hai ${n} scatti non salvati`}</b>
+            <b id="conf-t">{u === 1 ? "Hai 1 scatto non salvato" : `Hai ${u} scatti non salvati`}</b>
             <p>Se chiudi ora, le foto e i prezzi letti si perdono.</p>
             <button class="btn pri" onClick={props.onReview}>
               Rivedi e salva
