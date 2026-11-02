@@ -12,6 +12,7 @@ import {
 } from "../shared/list";
 import { createFamily, inviteLink, loadToken, saveToken, tokenFromLink } from "./family";
 import { ListStore, safeStorage, type Status } from "./sync";
+import { APP_VERSION, formatVersion, useUpdate } from "./update";
 
 type Tab = "lista" | "prezzi" | "offerte" | "negozi";
 
@@ -213,6 +214,7 @@ function ListScreen(props: {
   onToast: (text: string, undo?: () => void) => void;
 }) {
   const { store, trip } = props;
+  const upd = useUpdate();
   const secs = sections(store.items, trip);
   const { total, done } = counts(store.items);
 
@@ -236,6 +238,7 @@ function ListScreen(props: {
         </button>
       </header>
 
+      {upd.showBanner && <UpdateBanner onUpdate={upd.update} onLater={upd.later} />}
       <ReceiptCard total={total} done={done} trip={trip} onToggleTrip={props.onToggleTrip} />
       <SyncLine status={store.status} pending={store.pending.length} />
       <AddForm store={store} trip={trip} onToast={props.onToast} />
@@ -272,7 +275,52 @@ function ListScreen(props: {
           </button>
         </div>
       )}
+
+      <VersionFooter check={upd.check} onCheck={upd.checkNow} />
     </>
+  );
+}
+
+function UpdateBanner({ onUpdate, onLater }: { onUpdate: () => void; onLater: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div class="upd" role="status">
+      <div class="upd-text">
+        <Icon d={ICONS.refresh} />
+        <span>
+          <b>Nuova versione pronta</b>
+          <span>Si aggiorna in un secondo, la lista resta com'è.</span>
+        </span>
+      </div>
+      <div class="upd-actions">
+        <button
+          class="btn pri small"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            onUpdate();
+          }}
+        >
+          {busy ? "Aggiorno…" : "Aggiorna"}
+        </button>
+        <button class="btn bare small" onClick={onLater}>
+          Più tardi
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VersionFooter({ check, onCheck }: { check: "idle" | "checking" | "latest" | "error"; onCheck: () => void }) {
+  const label =
+    check === "checking" ? "Controllo…" : check === "latest" ? "Hai già l'ultima versione" : check === "error" ? "Serve la rete per controllare" : "Cerca aggiornamenti";
+  return (
+    <footer class="version">
+      <span>Versione {formatVersion(APP_VERSION)}</span>
+      <button class="link" onClick={onCheck} disabled={check === "checking"} aria-live="polite">
+        {label}
+      </button>
+    </footer>
   );
 }
 
@@ -667,6 +715,7 @@ const ICONS = {
   prezzi: "M3 12l9-9h8v8l-9 9zM16 8h.01",
   offerte: "M4 4h16v16H4zM4 9h16M9 4v16",
   negozi: "M3 9l2-5h14l2 5M4 9v11h16V9M3 9h18",
+  refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   invite: "M15 19a6 6 0 0 0-12 0M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M16 11h6",
 };
 

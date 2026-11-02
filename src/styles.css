@@ -306,6 +306,60 @@ button {
   letter-spacing: 0.2em;
 }
 
+/* ---------------- aggiornamento (U1) */
+
+.upd {
+  margin: 14px 16px 0;
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  background: var(--surface);
+  border: 1.5px dashed var(--sep);
+  border-radius: 14px;
+}
+.upd-text {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.upd-text .icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--accent);
+}
+.upd-text b {
+  display: block;
+  font-size: 0.882rem;
+}
+.upd-text span span {
+  font-size: 0.765rem;
+  color: var(--muted);
+}
+.upd-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn.bare {
+  background: transparent;
+  color: var(--accent);
+}
+
+.version {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 24px 16px 0;
+}
+.version span {
+  font-family: var(--mono);
+  font-size: 0.706rem;
+  color: var(--muted);
+}
+.version .link {
+  font-size: 0.882rem;
+}
+
 /* ---------------- stato sincronizzazione */
 
 .sync {
