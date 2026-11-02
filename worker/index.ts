@@ -24,6 +24,12 @@ export default {
       if (st.lastRun && st.lastRun.saved > 0 && Date.now() - st.lastRun.started < 20 * 3600_000) return json({ started: false, reason: "Già aggiornato nelle ultime 20 ore." });
       return json(await catalog(env).start());
     }
+    // solo le offerte di Lidl ed Eurospin: poche pagine, si può rifare dopo un'ora
+    if (url.pathname === "/api/offerte/aggiorna") {
+      const st = (await catalog(env).status()) as { lastRun: { started: number } | null };
+      if (st.lastRun && Date.now() - st.lastRun.started < 3600_000) return json({ started: false, reason: "Ultima lettura meno di un'ora fa." });
+      return json(await catalog(env).start(true));
+    }
 
     const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi|listino)$/);
     if (m) {

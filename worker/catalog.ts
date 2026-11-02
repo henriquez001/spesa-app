@@ -51,12 +51,13 @@ export class Catalog extends DurableObject<Env> {
   }
 
   /** Avvia il giro di stanotte (se ce n'è già uno in corso non ne parte un altro). */
-  async start(): Promise<{ started: boolean; queued: number }> {
+  /** onlyOffers: solo Lidl ed Eurospin (un paio di minuti), per vedere subito le offerte nuove. */
+  async start(onlyOffers = false): Promise<{ started: boolean; queued: number }> {
     const sql = this.ctx.storage.sql;
     const pending = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM queue").one().c;
     if (pending > 0) return { started: false, queued: pending };
     // prima le offerte (poche pagine, cambiano ogni settimana), poi il listino Conad
-    const tasks: Task[] = [...offerTasks(), ...KEYWORDS.map((query): Task => ({ source: "conad", query, page: 1 }))];
+    const tasks: Task[] = [...offerTasks(), ...(onlyOffers ? [] : KEYWORDS.map((query): Task => ({ source: "conad", query, page: 1 })))];
     for (const t of tasks) this.push(t);
     sql.exec("INSERT INTO runs (started, pages, saved, errors) VALUES (?, 0, 0, 0)", Date.now());
     sql.exec("DELETE FROM runs WHERE started < ?", Date.now() - 30 * 864e5);
