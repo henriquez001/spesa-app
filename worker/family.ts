@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_OPS_PER_MESSAGE, validateOp, wins, type Item, type Op, type ServerMessage } from "../shared/list";
 import { parseReading, READING_PROMPT, type Price, type Reading } from "../shared/prices";
+import { parseReceipt, RECEIPT_PROMPT, type Receipt } from "../shared/receipt";
 
 const TOMBSTONE_TTL = 30 * 24 * 60 * 60 * 1000; // gli elementi eliminati si tengono 30 giorni, per i telefoni rimasti offline
 const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -57,6 +58,10 @@ export class FamilyList extends DurableObject<Env> {
     this.ctx.storage.sql.exec("DELETE FROM usage WHERE day < ?", new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10));
 
     try {
+      if (new URL(request.url).searchParams.get("tipo") === "scontrino") {
+        const receipt = await readReceipt(this.env, bytes);
+        return json(receipt ? { receipt } : { receipt: null, error: "Non riesco a leggere le righe: prova una foto più vicina e dritta." });
+      }
       const reading = await readLabel(this.env, bytes);
       return json({ reading });
     } catch (e) {
@@ -144,18 +149,27 @@ export class FamilyList extends DurableObject<Env> {
 
 /** Chiede al modello di visione di leggere il cartellino. */
 export async function readLabel(env: Env, bytes: Uint8Array): Promise<Reading | null> {
+  return parseReading(await askVision(env, bytes, READING_PROMPT, 300));
+}
+
+/** Chiede al modello di visione tutte le righe di uno scontrino. */
+export async function readReceipt(env: Env, bytes: Uint8Array): Promise<Receipt | null> {
+  return parseReceipt(await askVision(env, bytes, RECEIPT_PROMPT, 2500));
+}
+
+async function askVision(env: Env, bytes: Uint8Array, prompt: string, maxTokens: number): Promise<string> {
   const model = (env.VISION_MODEL || DEFAULT_MODEL) as Parameters<Ai["run"]>[0];
   const input = {
     messages: [
       {
         role: "user",
         content: [
-          { type: "text", text: READING_PROMPT },
+          { type: "text", text: prompt },
           { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64(bytes)}` } },
         ],
       },
     ],
-    max_tokens: 300,
+    max_tokens: maxTokens,
     temperature: 0,
   };
   let out: unknown;
@@ -167,8 +181,7 @@ export async function readLabel(env: Env, bytes: Uint8Array): Promise<Reading | 
     await env.AI.run(model, { prompt: "agree" } as never);
     out = await env.AI.run(model, input as never);
   }
-  const text = typeof out === "object" && out && "response" in out ? String((out as { response: unknown }).response) : String(out ?? "");
-  return parseReading(text);
+  return typeof out === "object" && out && "response" in out ? String((out as { response: unknown }).response) : String(out ?? "");
 }
 
 function base64(bytes: Uint8Array): string {
