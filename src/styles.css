@@ -1426,3 +1426,166 @@ button {
     transition: none;
   }
 }
+
+/* ---------------- scontrino (S2) */
+
+/* selettore come nella Fotocamera: due scelte, etichette brevi, area di tocco 44 px */
+.camseg {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+.camseg button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.765rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.camseg button.on {
+  color: #ffd60a;
+}
+
+.sc-head {
+  margin: 20px 16px 0;
+  background: var(--paper);
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+.sc-ok {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.706rem;
+  color: var(--accent);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.sc-ok.warn {
+  color: var(--offer);
+}
+.sc-note {
+  margin: 18px 16px 0;
+  font-size: 0.882rem;
+  color: var(--muted);
+}
+.sc-note .link {
+  min-height: 44px;
+}
+.sc-store {
+  margin: 20px 16px 0;
+}
+.sc-store select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 1rem;
+  text-align: right;
+  text-align-last: right;
+}
+.cam-frame.tall {
+  top: 12%;
+  height: 52%;
+  left: 18%;
+  right: 18%;
+}
+.sc-actions {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.lrx {
+  position: relative;
+}
+.lrx + .lrx::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 0;
+  border-top: 0.5px solid var(--sep);
+}
+.lrx-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+}
+.lrx-head:active {
+  background: var(--accent-soft);
+}
+.lrx .t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+.lrx .raw {
+  font-family: var(--mono);
+  font-size: 0.706rem;
+  color: var(--muted);
+}
+.lrx .nm {
+  font-size: 0.941rem;
+  line-height: 1.25;
+}
+.lrx .pr {
+  font-family: var(--mono);
+  font-size: 0.824rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lrx .flag {
+  font-size: 0.706rem;
+}
+.lrx.off .nm,
+.lrx.off .pr {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.lrx .chev {
+  color: var(--muted);
+  transition: transform 250ms var(--ease);
+}
+.lrx.open .chev {
+  transform: rotate(90deg);
+}
+.inlist {
+  font-size: 0.706rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.lrx-tag {
+  font-size: 0.706rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lrx .chev {
+    transition: none;
+  }
+}

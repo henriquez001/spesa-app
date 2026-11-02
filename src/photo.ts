@@ -1,5 +1,6 @@
 import { normalizeName, type StoreId } from "../shared/list";
 import { euro, toCents, unitFromQty, type Reading, type Unit } from "../shared/prices";
+import type { Receipt } from "../shared/receipt";
 import type { NewPrice } from "./sync";
 
 // Foto dei cartellini: riduzione, invio al server per la lettura, dati da rivedere.
@@ -21,11 +22,13 @@ export interface Shot {
   reading: Reading | null;
 }
 
-const MAX_SIDE = 1280;
+/** Lato lungo massimo: 1280 px bastano per un cartellino, uno scontrino ha righe piccole e ne vuole 2048. */
+export const LABEL_SIDE = 1280;
+export const RECEIPT_SIDE = 2048;
 
-/** Riduce la foto a 1280 px sul lato lungo e la salva in JPEG: basta per leggere il cartellino e pesa poco. */
-export async function toJpeg(source: CanvasImageSource, width: number, height: number): Promise<Blob> {
-  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+/** Riduce la foto sul lato lungo e la salva in JPEG: si legge bene e pesa poco. */
+export async function toJpeg(source: CanvasImageSource, width: number, height: number, maxSide = LABEL_SIDE): Promise<Blob> {
+  const scale = Math.min(1, maxSide / Math.max(width, height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);
@@ -35,10 +38,10 @@ export async function toJpeg(source: CanvasImageSource, width: number, height: n
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("foto non creata"))), "image/jpeg", 0.8));
 }
 
-export async function fileToJpeg(file: File): Promise<Blob> {
+export async function fileToJpeg(file: File, maxSide = LABEL_SIDE): Promise<Blob> {
   const bmp = await createImageBitmap(file);
   try {
-    return await toJpeg(bmp, bmp.width, bmp.height);
+    return await toJpeg(bmp, bmp.width, bmp.height, maxSide);
   } finally {
     bmp.close();
   }
@@ -53,6 +56,29 @@ export async function readShot(token: string, blob: Blob): Promise<{ reading: Re
     return { reading: body.reading ?? null, error: body.reading ? undefined : (body.error ?? "Non si legge: scrivi tu il prezzo.") };
   } catch {
     return { reading: null, error: "Senza rete: scrivi tu il prezzo." };
+  }
+}
+
+/** Una foto (o un pezzo) di scontrino. */
+export interface Part {
+  id: string;
+  url: string;
+  blob: Blob;
+  status: ShotStatus;
+  error?: string;
+  receipt: Receipt | null;
+}
+
+export async function readReceiptPart(token: string, blob: Blob): Promise<{ receipt: Receipt | null; error?: string }> {
+  const offline = "Senza rete: lo rileggo appena torna la connessione.";
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return { receipt: null, error: offline };
+  try {
+    const res = await fetch(`/api/famiglie/${token}/leggi?tipo=scontrino`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+    const body = (await res.json().catch(() => ({}))) as { receipt?: Receipt | null; error?: string };
+    if (!res.ok || !body.receipt) return { receipt: null, error: body.error ?? "Non si legge: prova una foto più vicina e dritta." };
+    return { receipt: body.receipt };
+  } catch {
+    return { receipt: null, error: offline };
   }
 }
 

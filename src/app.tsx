@@ -222,10 +222,11 @@ function Home({ token }: { token: string }) {
         open={photo}
         store={store}
         onClose={() => setPhoto(false)}
-        onSaved={(n, shop) => {
+        onSaved={(n, shop, ticked) => {
           setPhoto(false);
-          setTab("prezzi");
-          showToast(n === 1 ? `Salvato 1 prezzo da ${STORE_NAMES[shop]}` : `Salvati ${n} prezzi da ${STORE_NAMES[shop]}`);
+          setTab(ticked > 0 ? "lista" : "prezzi");
+          const saved = n === 1 ? `Salvato 1 prezzo da ${STORE_NAMES[shop]}` : `Salvati ${n} prezzi da ${STORE_NAMES[shop]}`;
+          showToast(ticked === 0 ? saved : `${saved}, ${ticked === 1 ? "spuntato 1 articolo" : `spuntati ${ticked} articoli`}`);
         }}
       />
     </div>
