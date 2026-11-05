@@ -1,5 +1,6 @@
 // Scontrini: tutte le righe lette da una o più foto, con negozio, data e totale.
 
+import { looseJson } from "./loose-json";
 import { normalizeName, type StoreId } from "./list";
 import { matches, MAX_CENTS, words } from "./prices";
 
@@ -66,15 +67,8 @@ function cleanDate(x: unknown): string | null {
 const KINDS: Record<string, LineKind> = { prodotto: "item", sconto: "discount", busta: "bag", altro: "other" };
 
 export function parseReceipt(text: string): Receipt | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  let o: Record<string, unknown>;
-  try {
-    o = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  const o = looseJson(text);
+  if (!o) return null;
   const storeText = typeof o.negozio === "string" ? o.negozio.trim().slice(0, 80) : "";
   const lines: ReceiptLine[] = [];
   for (const r of Array.isArray(o.righe) ? o.righe.slice(0, 200) : []) {

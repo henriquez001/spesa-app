@@ -1,6 +1,7 @@
 // Prezzi letti dalle foto dei cartellini. Un prezzo è legato a un negozio e alla data
 // in cui è stato visto; la lista lo collega agli articoli confrontando i nomi.
 
+import { looseFields, looseJson } from "./loose-json";
 import { normalizeName, STORE_IDS, type StoreId } from "./list";
 
 export type Unit = "kg" | "l" | "pz";
@@ -142,15 +143,8 @@ export function unitFromQty(cents: number, qty: string | null): { unitCents: num
 
 /** Estrae la lettura dal testo del modello, che dovrebbe essere JSON ma a volte ha testo intorno. */
 export function parseReading(text: string): Reading | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  let o: Record<string, unknown>;
-  try {
-    o = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  const o = looseJson(text) ?? looseFields(text, ["prodotto", "prezzo", "quantita", "prezzo_unitario", "unita", "offerta", "leggibile"]);
+  if (!o) return null;
   const product = typeof o.prodotto === "string" ? normalizeName(o.prodotto) : "";
   const cents = toCents(o.prezzo);
   const qty = cleanQty(o.quantita);
