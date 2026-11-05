@@ -69,7 +69,7 @@ export class FamilyList extends DurableObject<Env> {
       if (e instanceof QuotaReached) {
         return json({ reading: null, receipt: null, error: "Per oggi le letture gratuite sono finite: riprendono domani. Intanto puoi scrivere il prezzo a mano." }, 429);
       }
-      console.error("lettura non riuscita", e);
+      console.error("lettura non riuscita", e instanceof Error ? e.message : String(e));
       return json({ reading: null, error: "Non sono riuscito a leggere la foto." });
     }
   }
@@ -153,12 +153,18 @@ export class FamilyList extends DurableObject<Env> {
 
 /** Chiede al modello di visione di leggere il cartellino. */
 export async function readLabel(env: Env, bytes: Uint8Array): Promise<Reading | null> {
-  return parseReading(await askVision(env, bytes, READING_PROMPT, 300));
+  const text = await askVision(env, bytes, READING_PROMPT, 300);
+  const reading = parseReading(text);
+  if (!reading) console.warn("cartellino non capito", text.slice(0, 600));
+  return reading;
 }
 
 /** Chiede al modello di visione tutte le righe di uno scontrino. */
 export async function readReceipt(env: Env, bytes: Uint8Array): Promise<Receipt | null> {
-  return parseReceipt(await askVision(env, bytes, RECEIPT_PROMPT, 2500));
+  const text = await askVision(env, bytes, RECEIPT_PROMPT, 2500);
+  const receipt = parseReceipt(text);
+  if (!receipt) console.warn("scontrino non capito", text.slice(0, 600));
+  return receipt;
 }
 
 /** Il tetto giornaliero dell'AI è raggiunto: nessuna lettura fino a domani (giorno UTC). */
@@ -211,7 +217,9 @@ async function runVision(env: Env, bytes: Uint8Array, prompt: string, maxTokens:
     out = await env.AI.run(model, input as never);
   }
   const o = (typeof out === "object" && out ? out : {}) as { response?: unknown; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
-  const text = "response" in o ? String(o.response) : String(out ?? "");
+  // a volte Workers AI restituisce la risposta già trasformata in oggetto, non come testo
+  const r = "response" in o ? o.response : out;
+  const text = r && typeof r === "object" ? JSON.stringify(r) : String(r ?? "");
   const u = o.usage;
   const usage = u && Number.isFinite(u.prompt_tokens) && Number.isFinite(u.completion_tokens) ? { prompt_tokens: Number(u.prompt_tokens), completion_tokens: Number(u.completion_tokens) } : null;
   return { text, usage };

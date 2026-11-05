@@ -24,8 +24,14 @@ export default {
       if (st.lastRun && st.lastRun.saved > 0 && Date.now() - st.lastRun.started < 20 * 3600_000) return json({ started: false, reason: "Già aggiornato nelle ultime 20 ore." });
       return json(await catalog(env).start());
     }
+    // solo le offerte di Lidl ed Eurospin: poche pagine, si può rifare dopo un'ora
+    if (url.pathname === "/api/offerte/aggiorna") {
+      const st = (await catalog(env).status()) as { lastRun: { started: number } | null };
+      if (st.lastRun && Date.now() - st.lastRun.started < 3600_000) return json({ started: false, reason: "Ultima lettura meno di un'ora fa." });
+      return json(await catalog(env).start(true));
+    }
 
-    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi|listino)$/);
+    const m = url.pathname.match(/^\/api\/famiglie\/([^/]+)\/(ws|lista|leggi|listino|cerca)$/);
     if (m) {
       const [, token, what] = m;
       if (!FAMILY_TOKEN.test(token)) return json({ error: "Link d'invito non valido." }, 404);
@@ -34,6 +40,10 @@ export default {
         const body = (await request.json().catch(() => null)) as { nomi?: unknown } | null;
         const names = Array.isArray(body?.nomi) ? body.nomi.filter((n): n is string => typeof n === "string" && n.length <= 80) : [];
         return json({ prezzi: await catalog(env).lookup(names) });
+      }
+      if (what === "cerca") {
+        const q = (url.searchParams.get("q") ?? "").slice(0, 80);
+        return json({ prezzi: await catalog(env).search(q) });
       }
       if (what === "ws" && request.headers.get("Upgrade") !== "websocket") {
         return json({ error: "Serve una connessione WebSocket." }, 426);
