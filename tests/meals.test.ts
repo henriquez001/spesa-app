@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addDays, DEFAULT_SETTINGS, eatenId, pantry, parseDiets, planDay, shoppingNeeds, type Diets } from "../shared/meals";
-import { amount, buyAmount } from "../shared/foods";
+import { addDays, DEFAULT_SETTINGS, eatenId, pantry, parseDiets, planDay, shoppingNeeds, validateSettings, type Diets } from "../shared/meals";
+import { amount, buyAmount, food } from "../shared/foods";
 import { RECIPES } from "../shared/recipes";
 
 // Dieta di prova inventata: stessa forma di quella vera, grammature diverse.
@@ -152,6 +152,60 @@ describe("generatore", () => {
     const c = planDay(MON, diets, DEFAULT_SETTINGS).find((d) => d.slot === "colazione")!;
     expect(c.title).toMatch(/^Pancake /);
     expect(c.steps.length).toBeGreaterThan(2);
+  });
+
+  it("le verdure da evitare non escono mai", () => {
+    for (let i = 0; i < 56; i++) {
+      for (let r = 0; r < 3; r++) {
+        const date = addDays(MON, i);
+        for (const d of planDay(date, diets, DEFAULT_SETTINGS, { [`${date}:cena`]: r, [`${date}:pranzo`]: r })) {
+          for (const p of d.portions) expect(DEFAULT_SETTINGS.exclude).not.toContain(p.food);
+        }
+      }
+    }
+  });
+
+  it("si può evitare anche un'alternativa della dieta", () => {
+    const s = { ...DEFAULT_SETTINGS, exclude: ["salmone"] };
+    for (let i = 0; i < 28; i++) {
+      for (const d of planDay(addDays(MON, i), diets, s)) expect(d.portions.some((p) => p.food === "salmone")).toBe(false);
+    }
+  });
+
+  it("le verdure preferite escono più spesso", () => {
+    const count = (prefer: string[]) => {
+      let n = 0;
+      for (let i = 0; i < 84; i++) {
+        for (const d of planDay(addDays(MON, i), diets, { ...DEFAULT_SETTINGS, prefer })) if (d.slot === "cena" && d.portions.some((p) => p.food === "spinaci")) n++;
+      }
+      return n;
+    };
+    expect(count(["spinaci"])).toBeGreaterThan(count([]));
+  });
+
+  it("le cene variano: tante ricette e contorni diversi in un mese, nessun contorno doppio nel giorno", () => {
+    const recipes = new Set<string>();
+    const titles = new Set<string>();
+    for (let i = 0; i < 28; i++) {
+      const day = planDay(addDays(MON, i), diets, DEFAULT_SETTINGS);
+      for (const d of day.filter((x) => x.slot === "cena" && x.person === "leandro")) {
+        recipes.add(d.recipeId!);
+        titles.add(d.title);
+      }
+      const lunchVeg = new Set(day.filter((x) => x.slot === "pranzo").flatMap((x) => x.portions.map((p) => p.food)));
+      for (const d of day.filter((x) => x.slot === "cena" && x.recipeId?.startsWith("c-"))) {
+        const side = d.portions.find((p) => food(p.food).group === "verdura")!;
+        expect(lunchVeg.has(side.food)).toBe(false);
+      }
+    }
+    expect(recipes.size).toBeGreaterThanOrEqual(16);
+    expect(titles.size).toBeGreaterThanOrEqual(20);
+  });
+
+  it("le impostazioni vecchie prendono le esclusioni di default e scartano alimenti sconosciuti", () => {
+    expect(validateSettings({ potatoes: true }).exclude).toEqual(DEFAULT_SETTINGS.exclude);
+    expect(validateSettings({ exclude: ["verza", "boh", 3], prefer: ["zucchine"] })).toMatchObject({ exclude: ["verza"], prefer: ["zucchine"] });
+    expect(validateSettings({ exclude: [] }).exclude).toEqual([]);
   });
 
   it("ogni ricetta ha passaggi e nessun segnaposto rimasto", () => {

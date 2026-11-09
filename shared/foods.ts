@@ -100,6 +100,9 @@ export const FOODS: Food[] = [
   F("porri", "porri", "verdura"),
   F("cavolini", "cavolini di Bruxelles", "verdura"),
   F("cipolla", "cipolla rossa", "verdura"),
+  F("bietole", "bietole", "verdura"),
+  F("cime_rapa", "cime di rapa", "verdura"),
+  F("asparagi", "asparagi", "verdura"),
 ];
 
 export const FOOD: Record<string, Food> = Object.fromEntries(FOODS.map((f) => [f.id, f]));

@@ -18,6 +18,11 @@ export interface Recipe {
   /** se c'è, il carboidrato del pasto deve essere uno di questi (piatto unico); altrimenti va a parte */
   carbs?: string[];
   veg: string[];
+  /**
+   * Contorno a scelta: la verdura non è fissa ma ruota tra i CONTORNI (tolti quelli da evitare).
+   * Nel titolo {contorno} diventa per esempio "zucchine trifolate", e la sua preparazione va in fondo ai passaggi.
+   */
+  side?: boolean;
   aromi: string[];
   flour?: boolean;
   minutes: number;
@@ -302,6 +307,112 @@ export const RECIPES: Recipe[] = [
     "Aggiungi i {proteina} e un cucchiaino di curry, 2 minuti, poi il riso scolato.",
   ] }),
 
+  // ------------------------------------------------------------ secondi con contorno a rotazione
+  // Il secondo cambia il modo di cucinare, il contorno ruota ogni giorno: tante combinazioni diverse.
+  R({ id: "c-pollo-piastra-salvia", title: "Pollo alla piastra al limone e salvia, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["limone", "salvia"], minutes: 20, steps: [
+    "Batti il {proteina} sottile e lascialo 10 minuti con succo di limone, salvia, sale e pepe.",
+    "Cuocilo sulla piastra rovente con un filo dell'olio pesato, 4 minuti per lato.",
+  ] }),
+  R({ id: "c-pollo-arrosto-erbe", title: "Pollo arrosto alle erbe, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["rosmarino", "timo", "aglio"], minutes: 35, steps: [
+    "Accendi il forno a 200 °C. Massaggia il {proteina} con rosmarino, timo, aglio schiacciato, sale e un filo dell'olio pesato.",
+    "Cuoci 22–25 minuti, poi lascia riposare 5 minuti prima di affettare.",
+  ] }),
+  R({ id: "c-pollo-polpette", title: "Polpette di pollo al forno, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["prezzemolo", "scorza di limone", "aglio"], minutes: 30, steps: [
+    "Trita il {proteina} al mixer con prezzemolo, mezzo spicchio d'aglio, scorza di limone, sale e pepe.",
+    "Forma delle polpette con le mani bagnate e mettile in teglia con carta forno.",
+    "Cuoci a 200 °C per 18–20 minuti, spennellate con un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-pollo-senape", title: "Pollo alla senape e timo, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["senape", "timo"], minutes: 20, steps: [
+    "Taglia il {proteina} a fette e spennellale con un cucchiaino di senape e timo.",
+    "Cuocile in padella con un filo dell'olio pesato, 4 minuti per lato, sfumando con un goccio d'acqua.",
+  ] }),
+  R({ id: "c-pollo-spiedini", title: "Spiedini di pollo alla paprika, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["paprika dolce", "origano", "limone"], minutes: 25, steps: [
+    "Taglia il {proteina} a cubotti e condiscilo con paprika, origano, limone e sale.",
+    "Infilalo negli spiedini e cuocilo sulla piastra 8–10 minuti girando spesso, con un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-pollo-tandoori", title: "Pollo alle spezie tandoori, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["spezie tandoori", "limone", "zenzero"], minutes: 30, steps: [
+    "Taglia il {proteina} a pezzi e lascialo 15 minuti con spezie tandoori, succo di limone, zenzero grattugiato e sale.",
+    "Cuoci in forno a 220 °C per 15–18 minuti con un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-pollo-pomodoro", title: "Pollo in umido al pomodoro e basilico, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pollo"], side: true, veg: [], aromi: ["passata di pomodoro", "basilico", "aglio"], minutes: 30, steps: [
+    "Rosola il {proteina} a pezzi con un filo dell'olio pesato e l'aglio, 4 minuti.",
+    "Aggiungi 4 cucchiai di passata e mezzo bicchiere d'acqua, coperchio e 15 minuti a fuoco basso.",
+    "Basilico fresco alla fine.",
+  ] }),
+
+  R({ id: "c-uova-tegamino", title: "Uova al tegamino al pepe, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["pepe nero", "erba cipollina"], minutes: 15, steps: [
+    "Cuoci le {proteina} in una padella antiaderente con un filo dell'olio pesato, coperchio, 4 minuti.",
+    "Sale, pepe nero ed erba cipollina sopra.",
+  ] }),
+  R({ id: "c-uova-omelette", title: "Omelette alle erbe, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["prezzemolo", "basilico", "erba cipollina"], minutes: 15, steps: [
+    "Sbatti le {proteina} con le erbe tritate, sale e pepe.",
+    "Versale in una padella calda con un filo dell'olio pesato, cuoci 3 minuti e ripiega a metà.",
+  ] }),
+  R({ id: "c-uova-curcuma", title: "Uova strapazzate alla curcuma, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["curcuma", "pepe nero"], minutes: 15, steps: [
+    "Sbatti le {proteina} con curcuma, sale e pepe.",
+    "Cuocile a fuoco basso con un filo dell'olio pesato, mescolando, finché sono morbide.",
+  ] }),
+  R({ id: "c-uova-camicia", title: "Uova in camicia, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["aceto di vino", "pepe nero"], minutes: 15, steps: [
+    "Porta a sobbollire l'acqua con un cucchiaio di aceto e crea un vortice con il cucchiaio.",
+    "Rompi le {proteina} una alla volta in una tazzina e falle scivolare nell'acqua, 3 minuti ciascuna.",
+    "Condisci con sale, pepe e un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-uova-sode-salsa-verde", title: "Uova sode con salsa verde, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["prezzemolo", "capperi dissalati", "aceto di vino"], minutes: 20, steps: [
+    "Cuoci le {proteina} 9 minuti, raffreddale e tagliale a metà.",
+    "Trita prezzemolo e un cucchiaino di capperi, allunga con un goccio d'aceto e un filo dell'olio pesato.",
+    "Servi le uova con la salsa sopra.",
+  ] }),
+  R({ id: "c-uova-frittatine", title: "Frittatine arrotolate al basilico, con {contorno}", slots: ["cena", "pranzo"], proteins: ["uova"], side: true, veg: [], aromi: ["basilico", "pepe nero"], minutes: 20, steps: [
+    "Sbatti le {proteina} con basilico, sale e pepe.",
+    "In una padella piccola con un filo dell'olio pesato cuoci frittatine sottili, un minuto per lato, e arrotolale.",
+  ] }),
+
+  R({ id: "c-pesce-cartoccio-erbe", title: "{proteina} al cartoccio alle erbe, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco", "pesce_grasso"], side: true, veg: [], aromi: ["prezzemolo", "timo", "limone"], minutes: 25, steps: [
+    "Accendi il forno a 190 °C. Metti il {proteina} su carta forno con erbe, fette di limone, sale e un filo dell'olio pesato.",
+    "Chiudi il cartoccio e cuoci 15–18 minuti.",
+  ] }),
+  R({ id: "c-pesce-salsa-verde", title: "{proteina} al vapore con salsa verde, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco"], side: true, veg: [], aromi: ["prezzemolo", "capperi dissalati", "limone"], minutes: 20, steps: [
+    "Cuoci il {proteina} al vapore 8–10 minuti.",
+    "Trita prezzemolo e capperi con succo di limone e un filo dell'olio pesato e versa sul pesce.",
+  ] }),
+  R({ id: "c-pesce-mediterranea", title: "{proteina} alla mediterranea, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco", "pesce_grasso"], side: true, veg: [], aromi: ["capperi dissalati", "origano", "pomodorini"], minutes: 25, steps: [
+    "In padella scalda un filo dell'olio pesato con qualche pomodorino a pezzi, capperi e origano, 3 minuti.",
+    "Adagia il {proteina}, coperchio, 8–10 minuti a fuoco medio.",
+  ] }),
+  R({ id: "c-pesce-polpette", title: "Polpette di {proteina} al forno, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco"], side: true, veg: [], aromi: ["prezzemolo", "scorza di limone"], minutes: 30, steps: [
+    "Trita il {proteina} crudo al mixer con prezzemolo, scorza di limone, sale e pepe.",
+    "Forma delle polpette e cuocile in forno a 200 °C per 15 minuti, spennellate con un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-pesce-pepe-limone", title: "{proteina} al pepe e limone, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco", "pesce_grasso"], side: true, veg: [], aromi: ["pepe nero", "limone"], minutes: 15, steps: [
+    "Condisci il {proteina} con pepe nero macinato grosso e scorza di limone.",
+    "Cuocilo in padella antiaderente con un filo dell'olio pesato, 3–4 minuti per lato, e sfuma con il succo di limone.",
+  ] }),
+  R({ id: "c-pesce-pomodoro", title: "{proteina} in umido al pomodoro, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco"], side: true, veg: [], aromi: ["passata di pomodoro", "aglio", "prezzemolo"], minutes: 25, steps: [
+    "Scalda 5 cucchiai di passata con l'aglio e un filo dell'olio pesato per 5 minuti.",
+    "Adagia il {proteina} nel sugo, coperchio, 10 minuti. Prezzemolo alla fine.",
+  ] }),
+  R({ id: "c-pesce-soia-zenzero", title: "{proteina} alla soia e zenzero, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_grasso", "pesce_bianco"], side: true, veg: [], aromi: ["salsa di soia", "zenzero", "cipollotto"], minutes: 20, steps: [
+    "Lascia il {proteina} 10 minuti con 2 cucchiai di salsa di soia e zenzero grattugiato.",
+    "Cuocilo in padella con un filo dell'olio pesato, 3 minuti per lato, poi versa sopra la marinata e il cipollotto.",
+  ] }),
+  R({ id: "c-pesce-crosta-erbe", title: "{proteina} in crosta di erbe, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_grasso"], side: true, veg: [], aromi: ["prezzemolo", "aneto", "scorza di limone"], minutes: 20, steps: [
+    "Trita prezzemolo, aneto e scorza di limone e premili sul {proteina}.",
+    "Cuoci in forno a 200 °C per 12–14 minuti con un filo dell'olio pesato.",
+  ] }),
+
+  R({ id: "c-manzo-tagliata-erbe", title: "Tagliata alle erbe, con {contorno}", slots: ["cena"], proteins: ["manzo"], side: true, veg: [], aromi: ["rosmarino", "salvia", "sale grosso"], minutes: 20, steps: [
+    "Condisci la {proteina} con rosmarino e salvia tritati.",
+    "Piastra rovente: 3 minuti per lato, riposo 5 minuti, poi affetta; sale grosso e un filo dell'olio pesato.",
+  ] }),
+  R({ id: "c-manzo-pepe-verde", title: "Bistecca al pepe verde, con {contorno}", slots: ["cena"], proteins: ["manzo"], side: true, veg: [], aromi: ["pepe verde", "senape"], minutes: 20, steps: [
+    "Cuoci la {proteina} in padella con un filo dell'olio pesato, 3 minuti per lato.",
+    "Toglila, versa in padella mezzo bicchiere d'acqua, un cucchiaino di senape e il pepe verde schiacciato; riduci 2 minuti e versa sulla carne.",
+  ] }),
+  R({ id: "c-manzo-limone", title: "Bistecca al limone e origano, con {contorno}", slots: ["cena"], proteins: ["manzo"], side: true, veg: [], aromi: ["limone", "origano", "aglio"], minutes: 20, steps: [
+    "Lascia la {proteina} 10 minuti con succo di limone, origano e aglio.",
+    "Cuocila sulla piastra 3 minuti per lato e condisci con un filo dell'olio pesato.",
+  ] }),
+
   // ------------------------------------------------------------ con le patate al posto del riso
   R({ id: "patate-tonno-limone", title: "Patate e tonno con zucchine, limone e menta", slots: ["pranzo"], proteins: ["tonno"], carbs: ["patate"], veg: ["zucchine"], aromi: ["limone", "menta"], minutes: 25, steps: [
     "Lessa le {carbo} a cubetti per 12 minuti.",
@@ -319,6 +430,30 @@ export const RECIPES: Recipe[] = [
     "Unisci tutto con la rucola, l'olio pesato, limone e prezzemolo.",
   ] }),
 ];
+
+/** Contorni a rotazione per le ricette con side: titolo e preparazione. */
+export const CONTORNI: Record<string, { title: string; step: string }> = {
+  zucchine: { title: "zucchine trifolate", step: "Contorno: taglia le zucchine a rondelle e cuocile in padella con il resto dell'olio pesato, aglio e prezzemolo, 8 minuti." },
+  spinaci: { title: "spinaci all'aglio", step: "Contorno: salta gli spinaci in padella con il resto dell'olio pesato e uno spicchio d'aglio, 3 minuti." },
+  broccoli: { title: "broccoli al vapore e limone", step: "Contorno: cuoci le cimette di broccoli al vapore 8 minuti e condiscile con il resto dell'olio pesato e limone." },
+  fagiolini: { title: "fagiolini all'aglio", step: "Contorno: lessa i fagiolini 8 minuti, poi saltali 2 minuti con il resto dell'olio pesato e aglio." },
+  carote: { title: "carote glassate al balsamico", step: "Contorno: cuoci le carote a rondelle in padella con il resto dell'olio pesato e mezzo bicchiere d'acqua, 10 minuti; sfuma con un cucchiaio di aceto balsamico." },
+  funghi: { title: "funghi trifolati", step: "Contorno: affetta i funghi e cuocili in padella con il resto dell'olio pesato, aglio e prezzemolo, 8 minuti." },
+  melanzane: { title: "melanzane al forno all'origano", step: "Contorno: taglia le melanzane a cubetti e cuocile in forno a 210 °C per 20 minuti con origano, sale e il resto dell'olio pesato." },
+  cavolo_nero: { title: "cavolo nero ripassato", step: "Contorno: sbollenta il cavolo nero a strisce 5 minuti e ripassalo in padella con il resto dell'olio pesato, aglio e peperoncino." },
+  carciofi: { title: "carciofi in padella al limone", step: "Contorno: cuoci i carciofi a spicchi in padella con il resto dell'olio pesato, aglio e mezzo bicchiere d'acqua, 12 minuti; limone alla fine." },
+  zucca: { title: "zucca al forno al rosmarino", step: "Contorno: cuoci la zucca a cubetti in forno a 200 °C per 25 minuti con rosmarino e il resto dell'olio pesato." },
+  radicchio: { title: "radicchio grigliato al balsamico", step: "Contorno: taglia il radicchio a spicchi, grigliali 2 minuti per lato e condiscili con il resto dell'olio pesato e aceto balsamico." },
+  cavolini: { title: "cavolini di Bruxelles arrosto", step: "Contorno: taglia i cavolini a metà e cuocili in forno a 210 °C per 20 minuti con il resto dell'olio pesato e sale." },
+  porri: { title: "porri stufati al timo", step: "Contorno: affetta i porri e stufali in padella con il resto dell'olio pesato, timo e mezzo bicchiere d'acqua, 12 minuti." },
+  insalata: { title: "insalata mista all'aceto di mele", step: "Contorno: condisci l'insalata con il resto dell'olio pesato, aceto di mele e sale." },
+  pomodorini: { title: "pomodorini al forno con origano", step: "Contorno: cuoci i pomodorini a metà in forno a 200 °C per 15 minuti con origano e il resto dell'olio pesato." },
+  bietole: { title: "bietole saltate al limone", step: "Contorno: lessa le bietole 4 minuti, strizzale e saltale con il resto dell'olio pesato, aglio e limone." },
+  cime_rapa: { title: "cime di rapa all'aglio", step: "Contorno: lessa le cime di rapa 5 minuti e saltale con il resto dell'olio pesato, aglio e peperoncino." },
+  rucola: { title: "rucola e pomodorini", step: "Contorno: condisci rucola e qualche pomodorino con il resto dell'olio pesato e aceto balsamico." },
+  cetrioli: { title: "insalata di cetrioli alla menta", step: "Contorno: affetta i cetrioli sottili e condiscili con il resto dell'olio pesato, menta, aceto di mele e sale." },
+  asparagi: { title: "asparagi al vapore", step: "Contorno: cuoci gli asparagi al vapore 8 minuti e condiscili con il resto dell'olio pesato e limone." },
+};
 
 /** Colazione con il pancake della dieta: il gusto ruota tra aggiunte senza calorie. */
 export const PANCAKE_FLAVOURS = ["alla cannella", "alla vaniglia", "al cacao amaro", "alla scorza d'arancia", "allo zenzero"];

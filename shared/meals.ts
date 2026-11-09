@@ -3,7 +3,7 @@
 // data, sceglie le alternative della dieta, abbina una ricetta e calcola cosa serve comprare.
 
 import { FOOD, food, PROTEIN_GROUPS } from "./foods";
-import { PANCAKE_FLAVOURS, PANCAKE_STEPS, RECIPES, SIDE_CARB_STEP, type Recipe, type Slot } from "./recipes";
+import { CONTORNI, PANCAKE_FLAVOURS, PANCAKE_STEPS, RECIPES, SIDE_CARB_STEP, type Recipe, type Slot } from "./recipes";
 
 export type { Slot } from "./recipes";
 export const SLOTS: Slot[] = ["colazione", "spuntino", "pranzo", "merenda", "cena"];
@@ -45,9 +45,13 @@ export interface MealSettings {
   flour: boolean;
   /** giorni di pasti coperti dalla spesa */
   horizon: number;
+  /** alimenti da evitare: ricette e contorni che li usano non escono */
+  exclude: string[];
+  /** alimenti da preferire: ricette e contorni che li usano escono più spesso */
+  prefer: string[];
 }
 
-export const DEFAULT_SETTINGS: MealSettings = { mensa: { leandro: [1, 2, 3, 4] }, potatoes: false, ratio: 60, flour: true, horizon: 6 };
+export const DEFAULT_SETTINGS: MealSettings = { mensa: { leandro: [1, 2, 3, 4] }, potatoes: false, ratio: 60, flour: true, horizon: 6, exclude: ["verza", "cavolfiore", "finocchi", "peperoni"], prefer: [] };
 export const FLOUR_G = 5;
 
 export interface Dish {
@@ -132,7 +136,13 @@ export function validateSettings(x: unknown): MealSettings {
     ratio: Number.isFinite(ratio) && ratio >= 10 && ratio <= 600 ? Math.round(ratio) : DEFAULT_SETTINGS.ratio,
     flour: typeof o.flour === "boolean" ? o.flour : DEFAULT_SETTINGS.flour,
     horizon: Number.isInteger(horizon) && horizon >= 1 && horizon <= 14 ? horizon : DEFAULT_SETTINGS.horizon,
+    exclude: Array.isArray(o.exclude) ? foodIds(o.exclude) : [...DEFAULT_SETTINGS.exclude],
+    prefer: Array.isArray(o.prefer) ? foodIds(o.prefer) : [...DEFAULT_SETTINGS.prefer],
   };
+}
+
+function foodIds(list: unknown[]): string[] {
+  return [...new Set(list.filter((f): f is string => typeof f === "string" && f in FOOD))].slice(0, 60);
 }
 
 // ------------------------------------------------------------------ date
@@ -202,11 +212,14 @@ function shuffled<T>(list: T[], seed: string): T[] {
 const mod = (a: number, n: number) => ((a % n) + n) % n;
 
 /** Sceglie un'alternativa per ogni voce della dieta. La voce principale cambia per settimana, le altre ogni giorno. */
-function choose(meal: DietMeal, date: string): Portion[] {
+function choose(meal: DietMeal, date: string, exclude: string[] = []): Portion[] {
   const d = dayNumber(date);
   const week = Math.floor((d + 3) / 7); // le settimane cominciano di lunedì
   const wd = weekday(date);
-  return meal.items.map((alts, i) => {
+  return meal.items.map((all, i) => {
+    // le alternative da evitare escono solo se la dieta non ne lascia altre
+    const ok = all.filter((a) => !exclude.includes(a.food));
+    const alts = ok.length ? ok : all;
     if (alts.length === 1) return alts[0];
     const isMain = alts.some((a) => PROTEIN_GROUPS.includes(food(a.food).group));
     // la voce principale non dipende dalla posizione, così due persone con le stesse alternative mangiano lo stesso pesce
@@ -238,7 +251,7 @@ function withVeg(portions: Portion[], veg: string[]): Portion[] {
 }
 
 function fill(step: string, names: Record<string, string>): string {
-  return step.replace(/\{(proteina|carbo|verdura)\}/g, (_, k: string) => names[k] ?? k);
+  return step.replace(/\{(proteina|carbo|verdura|contorno)\}/g, (_, k: string) => names[k] ?? k);
 }
 
 function cap(s: string): string {
@@ -249,6 +262,26 @@ function listTitle(portions: Portion[]): string {
   const names = portions.filter((p) => p.food !== "olio").map((p) => food(p.food).name.replace(/ senza lattosio| d'uovo/g, ""));
   if (names.length <= 1) return cap(names[0] ?? "");
   return cap(`${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}`);
+}
+
+/** Ripete due volte gli elementi che usano un alimento preferito: dopo il mescolamento finiscono più spesso in testa. */
+function weighted<T>(list: T[], foods: (x: T) => string[], prefer: string[]): T[] {
+  if (!prefer.length) return list;
+  return list.flatMap((x) => (foods(x).some((f) => prefer.includes(f)) ? [x, x] : [x]));
+}
+
+const uniq = <T,>(list: T[]): T[] => [...new Set(list)];
+
+function pickSide(s: MealSettings, week: number, n: number, usedToday: Set<string>): string {
+  const ok = Object.keys(CONTORNI).filter((v) => !s.exclude.includes(v));
+  const list = ok.length ? ok : Object.keys(CONTORNI);
+  const seq = uniq(shuffled(weighted(list, (v) => [v], s.prefer), `contorni:${week}`));
+  // niente stessa verdura due volte nello stesso giorno
+  for (let k = 0; k < seq.length; k++) {
+    const v = seq[mod(n + k, seq.length)];
+    if (!usedToday.has(v)) return v;
+  }
+  return seq[mod(n, seq.length)];
 }
 
 /** Chiave della scelta "Altra ricetta" per un pasto. */
@@ -270,7 +303,7 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
       const meal = person.days[String(wd)]?.[slot];
       if (!meal) continue;
       const mensa = slot === "pranzo" && (settings.mensa[person.id] ?? []).includes(wd);
-      eaters.push({ person, meal, chosen: choose(meal, date), mensa });
+      eaters.push({ person, meal, chosen: choose(meal, date, settings.exclude), mensa });
     }
 
     if (slot === "pranzo" || slot === "cena") {
@@ -287,8 +320,9 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
       }
       for (const [key, members] of groups) {
         const swapped = members.map((m) => applySwaps(m.chosen, settings));
-        let candidates = RECIPES.filter((r) => swapped.every((s) => fits(r, slot, s.portions)));
-        if (!candidates.length) candidates = RECIPES.filter((r) => swapped.every((s) => fits(r, slot, members[0].chosen)) && !r.carbs);
+        const allowed = RECIPES.filter((r) => !r.veg.some((v) => settings.exclude.includes(v)));
+        let candidates = allowed.filter((r) => swapped.every((s) => fits(r, slot, s.portions)));
+        if (!candidates.length) candidates = allowed.filter((r) => swapped.every((s) => fits(r, slot, members[0].chosen)) && !r.carbs);
         const ids = members.map((m) => m.person.id);
         const together = ids.length > 1 ? ids : undefined;
         if (!candidates.length) {
@@ -300,19 +334,26 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
           });
           continue;
         }
-        const pool = shuffled(candidates.sort((a, b) => a.id.localeCompare(b.id)), key);
+        // ordine nuovo ogni settimana; le verdure preferite contano doppio
+        const sorted = candidates.sort((a, b) => a.id.localeCompare(b.id));
+        const pool = uniq(shuffled(weighted(sorted, (r) => r.veg, settings.prefer), `${key}:${week}`));
         const offset = slot === "pranzo" ? Math.floor(pool.length / 2) : 0;
-        const recipe = pool[mod(week * 7 + wd + offset + reroll, pool.length)];
+        const recipe = pool[mod(wd + offset + reroll, pool.length)];
         const flour = !!recipe.flour && settings.flour;
         const first = swapped[0].portions;
+        // contorno a rotazione: in una settimana non si ripete
+        const side = recipe.side ? pickSide(settings, week, wd + reroll + (slot === "pranzo" ? 8 : 0), new Set(out.filter((o) => o.date === date).flatMap((o) => o.portions.map((p) => p.food)))) : undefined;
+        const veg = side ? [side] : recipe.veg;
         const names = {
           proteina: food(mainOf(first)?.food ?? "").name,
           carbo: food(carbOf(first)?.food ?? "").name,
-          verdura: recipe.veg.map((v) => food(v).name).join(" e "),
+          verdura: veg.map((v) => food(v).name).join(" e "),
+          contorno: side ? CONTORNI[side].title : "verdure di stagione",
         };
         const steps = recipe.steps
           .filter((s) => flour || !s.startsWith("[f]"))
           .map((s) => fill(s.replace(/^\[f\]/, ""), names));
+        if (side) steps.push(CONTORNI[side].step);
         if (!recipe.carbs) {
           // carboidrato a parte: un passaggio per tipo, con il nome di chi lo mangia se non è per tutti
           const byCarb = new Map<string, string[]>();
@@ -326,7 +367,7 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
           }
         }
         members.forEach((m, i) => {
-          const portions = withVeg(swapped[i].portions, recipe.veg);
+          const portions = withVeg(swapped[i].portions, veg);
           if (flour) portions.push({ food: "farina_riso", g: FLOUR_G });
           out.push({ date, slot, person: m.person.id, title: cap(fill(recipe.title, names)), recipeId: recipe.id, together, portions, aromi: recipe.aromi, flour, potatoes: swapped[i].potatoes, minutes: recipe.minutes, steps });
         });
