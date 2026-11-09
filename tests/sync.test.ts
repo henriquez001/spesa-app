@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListStore } from "../src/sync";
+import { validateOp } from "../shared/list";
 
 class MemoryStorage {
   data = new Map<string, string>();
@@ -138,5 +139,37 @@ describe("prezzi nella sincronizzazione", () => {
       }),
     );
     expect(Object.values(store.prices).map((p) => p.product).sort()).toEqual(["Latte", "Uova"]);
+  });
+});
+
+describe("pasti nella sincronizzazione", () => {
+  it("manda i documenti dei pasti e riceve diete e documenti dal server", () => {
+    vi.stubGlobal("location", { protocol: "https:", host: "spesa.example" });
+    const { store, sockets } = setup();
+    store.connect();
+    store.setDoc("settings:pasti", { potatoes: true });
+    sockets[0].open();
+    expect(sockets[0].ops()[0].doc.id).toBe("settings:pasti");
+    const now = Date.now();
+    store.receive(
+      JSON.stringify({
+        t: "snapshot",
+        items: [],
+        prices: [],
+        docs: [{ id: "eaten:2026-11-09:cena:anna", data: { date: "2026-11-09" }, deleted: false, updatedAt: now }],
+        diets: { people: [{ id: "anna", name: "Anna", days: { "1": { cena: ["pollo:200"] } } }] },
+      }),
+    );
+    expect(store.diets?.people[0].name).toBe("Anna");
+    expect(Object.keys(store.docs).sort()).toEqual(["eaten:2026-11-09:cena:anna", "settings:pasti"]);
+    // il server smette di mandarle: spariscono anche dal telefono
+    store.receive(JSON.stringify({ t: "snapshot", items: [], prices: [], docs: [], diets: null }));
+    expect(store.diets).toBeNull();
+  });
+
+  it("rifiuta documenti con id sconosciuti o troppo grandi", () => {
+    expect(validateOp({ opId: "abcdefgh12", doc: { id: "hack:x", data: {}, deleted: false, updatedAt: 1 } })).toBeNull();
+    expect(validateOp({ opId: "abcdefgh12", doc: { id: "eaten:x", data: { s: "x".repeat(5000) }, deleted: false, updatedAt: 1 } })).toBeNull();
+    expect(validateOp({ opId: "abcdefgh12", doc: { id: "eaten:2026-11-09:cena:anna", data: {}, deleted: false, updatedAt: 1 } })).not.toBeNull();
   });
 });

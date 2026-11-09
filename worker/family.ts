@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { MAX_OPS_PER_MESSAGE, validateOp, wins, type Item, type Op, type ServerMessage } from "../shared/list";
+import { MAX_OPS_PER_MESSAGE, validateOp, wins, type Doc, type Item, type Op, type ServerMessage } from "../shared/list";
+import { parseDiets } from "../shared/meals";
 import { parseReading, READING_PROMPT, type Price, type Reading } from "../shared/prices";
 import { parseReceipt, RECEIPT_PROMPT, type Receipt } from "../shared/receipt";
 import { DEFAULT_DAILY_NEURONS, MAX_INPUT_TOKENS, neurons, worstCase } from "../shared/budget";
@@ -10,7 +11,7 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const READINGS_PER_DAY = 300; // tetto per famiglia, così un link finito in mani sbagliate non consuma l'AI
 const DEFAULT_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
-type Table = "items" | "prices";
+type Table = "items" | "prices" | "docs";
 
 /**
  * Lo spazio di una famiglia. Un Durable Object per famiglia: tiene lista e prezzi in SQLite,
@@ -24,6 +25,7 @@ export class FamilyList extends DurableObject<Env> {
       const sql = this.ctx.storage.sql;
       sql.exec("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL)");
       sql.exec("CREATE TABLE IF NOT EXISTS prices (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL)");
+      sql.exec("CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL)");
       sql.exec("CREATE TABLE IF NOT EXISTS usage (day TEXT PRIMARY KEY, readings INTEGER NOT NULL)");
     });
   }
@@ -33,7 +35,7 @@ export class FamilyList extends DurableObject<Env> {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      this.send(server, { t: "snapshot", items: this.all<Item>("items"), prices: this.all<Price>("prices") });
+      this.send(server, { t: "snapshot", items: this.all<Item>("items"), prices: this.all<Price>("prices"), docs: this.all<Doc>("docs"), diets: this.diets() });
       return new Response(null, { status: 101, webSocket: client });
     }
     const url = new URL(request.url);
@@ -93,7 +95,7 @@ export class FamilyList extends DurableObject<Env> {
       const op = validateOp(raw);
       if (!op) continue;
       received.push(op.opId);
-      const changed = op.item ? this.upsert("items", op.item) : this.upsert("prices", op.price);
+      const changed = op.item ? this.upsert("items", op.item) : op.doc ? this.upsert("docs", op.doc) : this.upsert("prices", op.price);
       if (changed) applied.push(op);
     }
     if (received.length) this.send(ws, { t: "ack", opIds: received });
@@ -134,11 +136,30 @@ export class FamilyList extends DurableObject<Env> {
   }
 
   private purgeTombstones(): void {
-    for (const table of ["items", "prices"] as const) {
+    for (const table of ["items", "prices", "docs"] as const) {
       this.ctx.storage.sql.exec(
         `DELETE FROM ${table} WHERE updated < ? AND json_extract(data, '$.deleted') = 1`,
         Date.now() - TOMBSTONE_TTL,
       );
+    }
+  }
+
+  /**
+   * Le diete sono dati personali: non stanno nel codice (il repository è pubblico) ma in due
+   * secret del Worker, e arrivano solo alle famiglie elencate in DIETE_FAMIGLIE (id del Durable Object).
+   */
+  private diets(): unknown {
+    const allowed = (this.env.DIETE_FAMIGLIE ?? "").split(",").map((s) => s.trim());
+    if (!this.env.DIETE || !allowed.includes(this.ctx.id.toString())) return null;
+    try {
+      // si manda il formato compatto, che il telefono rilegge e controlla con parseDiets
+      const raw: unknown = JSON.parse(this.env.DIETE);
+      if (parseDiets(raw)) return raw;
+      console.error("DIETE non è nel formato atteso");
+      return null;
+    } catch {
+      console.error("DIETE non è un JSON valido");
+      return null;
     }
   }
 
