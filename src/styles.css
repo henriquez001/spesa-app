@@ -2185,6 +2185,47 @@ button {
   transform: scale(0.97);
 }
 
+/* cibi da evitare / da preferire (E1) */
+.sgroup.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+button.srow {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  transition: background-color 100ms ease-out;
+}
+button.srow:active {
+  background: var(--accent-soft);
+}
+li + li > .srow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  border-top: 0.5px solid var(--sep);
+}
+.chev-r {
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.tick {
+  color: var(--accent);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+.pick[aria-checked="true"] .tick {
+  opacity: 1;
+}
+
 /* dispensa */
 .group.flush {
   margin: 0;
@@ -2211,7 +2252,8 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .day span,
   .seg button,
-  .dchip {
+  .dchip,
+  button.srow {
     transition: none;
   }
   .dchip:active,

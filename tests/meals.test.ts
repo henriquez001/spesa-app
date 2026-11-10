@@ -118,7 +118,7 @@ describe("generatore", () => {
   });
 
   it("patate al posto del riso con il rapporto scelto", () => {
-    const s = { ...DEFAULT_SETTINGS, potatoes: true, ratio: 60 };
+    const s = { ...DEFAULT_SETTINGS, potatoes: true, ratio: 60, exclude: [...DEFAULT_SETTINGS.exclude, "quinoa", "grano_saraceno", "miglio"] };
     const bruno = planDay(MON, diets, s).find((d) => d.slot === "cena" && d.person === "leandro")!;
     expect(bruno.portions.find((p) => p.food === "riso")).toBeUndefined();
     expect(bruno.portions.find((p) => p.food === "patate")!.g).toBe(30);
@@ -206,6 +206,45 @@ describe("generatore", () => {
     expect(validateSettings({ potatoes: true }).exclude).toEqual(DEFAULT_SETTINGS.exclude);
     expect(validateSettings({ exclude: ["verza", "boh", 3], prefer: ["zucchine"] })).toMatchObject({ exclude: ["verza"], prefer: ["zucchine"] });
     expect(validateSettings({ exclude: [] }).exclude).toEqual([]);
+  });
+
+  it("equivalenze: tacchino, vitello e cereali senza glutine a parità di grammi, anche nei testi", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 42; i++) {
+      for (const d of planDay(addDays(MON, i), diets, DEFAULT_SETTINGS)) {
+        for (const p of d.portions) seen.add(p.food);
+        const t = d.portions.find((p) => p.food === "tacchino");
+        if (t && d.recipeId) {
+          expect(`${d.title} ${d.steps.join(" ")}`).not.toMatch(/\bpollo\b/i);
+          expect([200, 250, 150]).toContain(t.g);
+        }
+        if (d.portions.some((p) => p.food === "vitello")) expect(d.portions.find((p) => p.food === "vitello")!.g).toBe(250);
+        for (const c of ["quinoa", "grano_saraceno", "miglio"]) if (d.portions.some((p) => p.food === c)) expect(d.steps.join(" ")).toMatch(c === "grano_saraceno" ? /grano saraceno/ : new RegExp(c));
+      }
+    }
+    for (const f of ["tacchino", "vitello", "quinoa", "grano_saraceno", "miglio"]) expect(seen.has(f)).toBe(true);
+    // da evitare vale anche per le equivalenze
+    for (let i = 0; i < 42; i++) {
+      for (const d of planDay(addDays(MON, i), diets, { ...DEFAULT_SETTINGS, exclude: ["tacchino", "quinoa"] })) {
+        expect(d.portions.some((p) => p.food === "tacchino" || p.food === "quinoa")).toBe(false);
+      }
+    }
+  });
+
+  it("le due cene di pesce della settimana non ripetono lo stesso pesce", () => {
+    const fish: string[] = [];
+    for (let w = 0; w < 4; w++) for (const wd of [2, 4]) {
+      const c = planDay(addDays(MON, w * 7 + wd), diets, DEFAULT_SETTINGS).find((d) => d.slot === "cena" && d.person === "anna")!;
+      fish.push(c.portions[0].food);
+    }
+    for (let i = 1; i < fish.length; i++) expect(fish[i]).not.toBe(fish[i - 1]);
+  });
+
+  it("rapporto patate: i vecchi 60 g diventano i 400 g della guida, una scelta nuova resta", () => {
+    expect(DEFAULT_SETTINGS.ratio).toBe(400);
+    expect(validateSettings({ ratio: 60 }).ratio).toBe(400);
+    expect(validateSettings({ ratio: 60, ratioChecked: true }).ratio).toBe(60);
+    expect(validateSettings({ ratio: 380 }).ratio).toBe(380);
   });
 
   it("ogni ricetta ha passaggi e nessun segnaposto rimasto", () => {

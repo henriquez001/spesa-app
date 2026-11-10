@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { amount, buyAmount, food } from "../shared/foods";
+import { amount, buyAmount, food, FOODS, type FoodGroup } from "../shared/foods";
 import {
   addDays,
   eatenId,
@@ -318,9 +318,68 @@ function RecipeSheet({ diets, dishes, open, onClose }: { diets: Diets; dishes: D
 
 const MENSA_DAYS = [1, 2, 3, 4, 5, 6];
 
+// Cibi che si possono evitare o preferire (variante E1): solo quelli che il generatore sa cambiare.
+const PICK_GROUPS: { title: string; groups: FoodGroup[]; skip?: string[] }[] = [
+  { title: "Verdure", groups: ["verdura"], skip: ["verdure", "passata"] },
+  { title: "Pesce", groups: ["pesce_bianco", "pesce_grasso"] },
+  { title: "Carne", groups: ["pollo", "manzo"], skip: ["pollo", "manzo"] },
+  { title: "Cereali al posto del riso", groups: ["carbo"], skip: ["riso", "pasta", "pane_schar", "pane_integrale", "farina_riso", "patate", "crackers_riso", "gallette_riso"] },
+];
+const pickList = (g: (typeof PICK_GROUPS)[number]) =>
+  FOODS.filter((f) => g.groups.includes(f.group) && !g.skip?.includes(f.id)).sort((a, b) => a.name.localeCompare(b.name, "it"));
+const countLabel = (n: number) => (n === 0 ? "Nessuno" : String(n));
+
+function FoodPicker(props: { list: "exclude" | "prefer"; settings: MealSettings; save: (patch: Partial<MealSettings>) => void }) {
+  const { settings: s, list } = props;
+  const other = list === "exclude" ? "prefer" : "exclude";
+  const chosen = s[list];
+  function toggle(id: string) {
+    const on = chosen.includes(id);
+    // un cibo non può essere insieme da evitare e da preferire
+    props.save({ [list]: on ? chosen.filter((x) => x !== id) : [...chosen, id], [other]: s[other].filter((x) => x !== id) });
+  }
+  return (
+    <div class="settings">
+      {PICK_GROUPS.map((g) => (
+        <div key={g.title}>
+          <h3 class="shead">{g.title}</h3>
+          <ul class="sgroup plain">
+            {pickList(g).map((f) => {
+              const on = chosen.includes(f.id);
+              return (
+                <li key={f.id}>
+                  <button class="srow pick" role="checkbox" aria-checked={on} onClick={() => toggle(f.id)}>
+                    <span>{f.name}</span>
+                    <span class="tick" aria-hidden="true">
+                      ✓
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+      <p class="sfoot">
+        {list === "exclude"
+          ? "Le ricette e i contorni con questi cibi non vengono proposti. Un pesce si salta solo se la dieta quel giorno ne prevede un altro."
+          : "Le ricette e i contorni con questi cibi escono più spesso, circa il doppio."}
+      </p>
+    </div>
+  );
+}
+
 function SettingsSheet(props: { store: ListStore; diets: Diets; settings: MealSettings; open: boolean; onClose: () => void }) {
   const { store, settings: s } = props;
+  const [page, setPage] = useState<null | "exclude" | "prefer">(null);
   const save = (patch: Partial<MealSettings>) => store.setDoc(SETTINGS_ID, { ...s, ...patch } as unknown as Record<string, unknown>);
+  if (page) {
+    return (
+      <Sheet open={props.open} title={page === "exclude" ? "Da evitare" : "Da preferire"} onClose={() => setPage(null)} closeLabel="‹ Impostazioni">
+        <FoodPicker list={page} settings={s} save={save} />
+      </Sheet>
+    );
+  }
   // la mensa riguarda chi ha pranzi nella dieta nei giorni feriali; di solito una persona sola
   const worker = props.diets.people.find((p) => p.id in s.mensa) ?? props.diets.people.find((p) => p.id === "leandro") ?? props.diets.people[0];
   const days = s.mensa[worker.id] ?? [];
@@ -369,7 +428,22 @@ function SettingsSheet(props: { store: ListStore; diets: Diets; settings: MealSe
             </span>
           </div>
         </div>
-        <p class="sfoot">Vale per pranzi e cene di tutti. Il valore va confermato con la nutrizionista.</p>
+        <p class="sfoot">Vale per pranzi e cene di tutti. La guida alle equivalenze della nutrizionista indica circa 400 g di patate per 100 g di riso.</p>
+
+        <h3 class="shead">Cibi</h3>
+        <div class="sgroup">
+          <button class="srow nav" onClick={() => setPage("exclude")}>
+            <span>Da evitare</span>
+            <span class="val">{countLabel(s.exclude.length)}</span>
+            <span class="chev-r" aria-hidden="true">›</span>
+          </button>
+          <button class="srow nav" onClick={() => setPage("prefer")}>
+            <span>Da preferire</span>
+            <span class="val">{countLabel(s.prefer.length)}</span>
+            <span class="chev-r" aria-hidden="true">›</span>
+          </button>
+        </div>
+        <p class="sfoot">Le ricette cambiano solo la preparazione: le grammature restano quelle della dieta.</p>
 
         <h3 class="shead">Ricette</h3>
         <div class="sgroup">

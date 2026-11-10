@@ -6,8 +6,8 @@ import { FOOD, food, PROTEIN_GROUPS } from "./foods";
 import { CONTORNI, PANCAKE_FLAVOURS, PANCAKE_STEPS, RECIPES, SIDE_CARB_STEP, type Recipe, type Slot } from "./recipes";
 
 export type { Slot } from "./recipes";
-export const SLOTS: Slot[] = ["colazione", "spuntino", "pranzo", "merenda", "cena"];
-export const SLOT_NAMES: Record<Slot, string> = { colazione: "Colazione", spuntino: "Spuntino", pranzo: "Pranzo", merenda: "Merenda", cena: "Cena" };
+export const SLOTS: Slot[] = ["colazione", "spuntino", "pranzo", "preworkout", "merenda", "cena"];
+export const SLOT_NAMES: Record<Slot, string> = { colazione: "Colazione", spuntino: "Spuntino", pranzo: "Pranzo", preworkout: "Pre allenamento", merenda: "Merenda", cena: "Cena" };
 export const WEEKDAYS = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 export const WEEKDAY_NAMES = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
 
@@ -42,6 +42,8 @@ export interface MealSettings {
   potatoes: boolean;
   /** grammi di patate al posto di 100 g di riso */
   ratio: number;
+  /** il rapporto è già quello della guida alle equivalenze (o scelto dopo): non va più corretto */
+  ratioChecked: boolean;
   flour: boolean;
   /** giorni di pasti coperti dalla spesa */
   horizon: number;
@@ -51,7 +53,7 @@ export interface MealSettings {
   prefer: string[];
 }
 
-export const DEFAULT_SETTINGS: MealSettings = { mensa: { leandro: [1, 2, 3, 4] }, potatoes: false, ratio: 60, flour: true, horizon: 6, exclude: ["verza", "cavolfiore", "finocchi", "peperoni"], prefer: [] };
+export const DEFAULT_SETTINGS: MealSettings = { mensa: { leandro: [1, 2, 3, 4] }, potatoes: false, ratio: 400, ratioChecked: true, flour: true, horizon: 6, exclude: ["verza", "cavolfiore", "finocchi", "peperoni"], prefer: [] };
 export const FLOUR_G = 5;
 
 export interface Dish {
@@ -133,7 +135,9 @@ export function validateSettings(x: unknown): MealSettings {
   return {
     mensa: o.mensa && typeof o.mensa === "object" ? mensa : { ...DEFAULT_SETTINGS.mensa },
     potatoes: typeof o.potatoes === "boolean" ? o.potatoes : DEFAULT_SETTINGS.potatoes,
-    ratio: Number.isFinite(ratio) && ratio >= 10 && ratio <= 600 ? Math.round(ratio) : DEFAULT_SETTINGS.ratio,
+    // i 60 g del primo giro erano una stima sbagliata: la guida alle equivalenze dice circa 400 g
+    ratio: Number.isFinite(ratio) && ratio >= 10 && ratio <= 600 && !(ratio === 60 && o.ratioChecked !== true) ? Math.round(ratio) : DEFAULT_SETTINGS.ratio,
+    ratioChecked: true,
     flour: typeof o.flour === "boolean" ? o.flour : DEFAULT_SETTINGS.flour,
     horizon: Number.isInteger(horizon) && horizon >= 1 && horizon <= 14 ? horizon : DEFAULT_SETTINGS.horizon,
     exclude: Array.isArray(o.exclude) ? foodIds(o.exclude) : [...DEFAULT_SETTINGS.exclude],
@@ -220,11 +224,11 @@ function choose(meal: DietMeal, date: string, exclude: string[] = []): Portion[]
     // le alternative da evitare escono solo se la dieta non ne lascia altre
     const ok = all.filter((a) => !exclude.includes(a.food));
     const alts = ok.length ? ok : all;
-    if (alts.length === 1) return alts[0];
+    if (alts.length === 1) return { ...alts[0] };
     const isMain = alts.some((a) => PROTEIN_GROUPS.includes(food(a.food).group));
     // la voce principale non dipende dalla posizione, così due persone con le stesse alternative mangiano lo stesso pesce
-    const idx = isMain ? Math.floor(wd / 2) + week : d + i;
-    return alts[mod(idx, alts.length)];
+    const idx = isMain ? week * 2 + Math.floor(wd / 2) : d + i;
+    return { ...alts[mod(idx, alts.length)] };
   });
 }
 
@@ -284,6 +288,32 @@ function pickSide(s: MealSettings, week: number, n: number, usedToday: Set<strin
   return seq[mod(n, seq.length)];
 }
 
+/**
+ * Equivalenze dalla guida della nutrizionista: stesso peso, alimento diverso.
+ * Ogni voce è la rotazione dei giorni: l'alimento della dieta resta il più frequente.
+ * Solo cereali senza glutine al posto del riso (pane Schär nella dieta).
+ */
+export const EQUIVALENTS: Record<string, string[]> = {
+  pollo: ["pollo", "tacchino", "pollo"],
+  manzo: ["manzo", "vitello"],
+  riso: ["riso", "quinoa", "riso", "grano_saraceno", "riso", "miglio"],
+};
+
+function equivalent(foodId: string, d: number, s: MealSettings): string {
+  const rot = EQUIVALENTS[foodId];
+  if (!rot) return foodId;
+  const ok = rot.filter((f) => !s.exclude.includes(f));
+  const list = weighted(ok.length ? ok : [foodId], (f) => [f], s.prefer);
+  return list[mod(d, list.length)];
+}
+
+/** Cambia l'alimento nei testi della ricetta: "Pollo arrosto" → "Tacchino arrosto". */
+function renameIn(text: string, from: string, to: string): string {
+  const words: Record<string, string> = { pollo: "pollo", manzo: "manzo", tacchino: "tacchino", vitello: "vitello" };
+  if (!words[from] || !words[to]) return text;
+  return text.replace(new RegExp(`\\b${words[from]}\\b`, "g"), words[to]).replace(new RegExp(`\\b${cap(words[from])}\\b`, "g"), cap(words[to]));
+}
+
 /** Chiave della scelta "Altra ricetta" per un pasto. */
 export const rerollKey = (date: string, slot: Slot) => `${date}:${slot}`;
 
@@ -303,7 +333,13 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
       const meal = person.days[String(wd)]?.[slot];
       if (!meal) continue;
       const mensa = slot === "pranzo" && (settings.mensa[person.id] ?? []).includes(wd);
-      eaters.push({ person, meal, chosen: choose(meal, date, settings.exclude), mensa });
+      const chosen = choose(meal, date, settings.exclude);
+      // proteina equivalente (pollo → tacchino, manzo → vitello): uguale per tutti nello stesso pasto
+      if (slot === "pranzo" || slot === "cena") {
+        const main = mainOf(chosen);
+        if (main) main.food = equivalent(main.food, d + (slot === "pranzo" ? 3 : 0), settings);
+      }
+      eaters.push({ person, meal, chosen, mensa });
     }
 
     if (slot === "pranzo" || slot === "cena") {
@@ -340,7 +376,15 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
         const offset = slot === "pranzo" ? Math.floor(pool.length / 2) : 0;
         const recipe = pool[mod(wd + offset + reroll, pool.length)];
         const flour = !!recipe.flour && settings.flour;
+        if (!recipe.carbs) {
+          // carboidrato servito a parte: il riso può diventare un cereale equivalente
+          const carb = equivalent("riso", d + (slot === "pranzo" ? 1 : 0), settings);
+          for (const sw of swapped) for (const p of sw.portions) if (p.food === "riso") p.food = carb;
+        }
         const first = swapped[0].portions;
+        const mainFood = mainOf(first)?.food ?? "";
+        const base = mainFood === "tacchino" ? "pollo" : mainFood === "vitello" ? "manzo" : mainFood;
+        const rename = (t: string) => renameIn(t, base, mainFood);
         // contorno a rotazione: in una settimana non si ripete
         const side = recipe.side ? pickSide(settings, week, wd + reroll + (slot === "pranzo" ? 8 : 0), new Set(out.filter((o) => o.date === date).flatMap((o) => o.portions.map((p) => p.food)))) : undefined;
         const veg = side ? [side] : recipe.veg;
@@ -352,7 +396,7 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
         };
         const steps = recipe.steps
           .filter((s) => flour || !s.startsWith("[f]"))
-          .map((s) => fill(s.replace(/^\[f\]/, ""), names));
+          .map((s) => rename(fill(s.replace(/^\[f\]/, ""), names)));
         if (side) steps.push(CONTORNI[side].step);
         if (!recipe.carbs) {
           // carboidrato a parte: un passaggio per tipo, con il nome di chi lo mangia se non è per tutti
@@ -369,7 +413,7 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
         members.forEach((m, i) => {
           const portions = withVeg(swapped[i].portions, veg);
           if (flour) portions.push({ food: "farina_riso", g: FLOUR_G });
-          out.push({ date, slot, person: m.person.id, title: cap(fill(recipe.title, names)), recipeId: recipe.id, together, portions, aromi: recipe.aromi, flour, potatoes: swapped[i].potatoes, minutes: recipe.minutes, steps });
+          out.push({ date, slot, person: m.person.id, title: cap(rename(fill(recipe.title, names))), recipeId: recipe.id, together, portions, aromi: recipe.aromi, flour, potatoes: swapped[i].potatoes, minutes: recipe.minutes, steps });
         });
       }
       continue;

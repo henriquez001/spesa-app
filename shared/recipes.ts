@@ -4,7 +4,7 @@
 // Nei passaggi {proteina}, {verdura} e {carbo} diventano i nomi degli alimenti scelti.
 // Un passaggio che comincia con "[f]" compare solo se la farina fuori piano è accesa.
 
-export type Slot = "colazione" | "spuntino" | "pranzo" | "merenda" | "cena";
+export type Slot = "colazione" | "spuntino" | "pranzo" | "preworkout" | "merenda" | "cena";
 
 export interface Recipe {
   id: string;
@@ -467,6 +467,9 @@ export const PANCAKE_STEPS = [
 /** Come si cuoce il carboidrato servito a parte. */
 export const SIDE_CARB_STEP: Record<string, string> = {
   riso: "Cuoci il riso basmati in acqua salata per 12 minuti e servilo accanto.",
+  quinoa: "Sciacqua la quinoa sotto l'acqua, cuocila in acqua salata 15 minuti, sgranala con una forchetta e servila accanto.",
+  grano_saraceno: "Cuoci il grano saraceno decorticato in acqua salata 15 minuti, scolalo e servilo accanto.",
+  miglio: "Sciacqua il miglio e cuocilo in due volte il suo volume d'acqua salata, coperto, 15 minuti; sgranalo e servilo accanto.",
   patate: "Lessa le patate a cubetti per 12 minuti (oppure al forno a 200 °C per 25 minuti) e servile accanto.",
   pane_schar: "Accompagna con il pane Schär, anche tostato.",
   pane_integrale: "Accompagna con il pane integrale, anche tostato.",
