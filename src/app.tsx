@@ -19,8 +19,9 @@ import { PhotoFlow } from "./photos";
 import { useCatalog } from "./catalog";
 import { PriceSheet, PricesScreen } from "./prices-screen";
 import { SearchScreen } from "./search-screen";
+import { MealNeeds, MealsScreen } from "./meals-screen";
 
-type Tab = "lista" | "prezzi" | "offerte" | "negozi" | "cerca";
+type Tab = "pasti" | "lista" | "prezzi" | "cerca";
 
 export function App() {
   const [token, setToken] = useState<string | null>(() => loadToken());
@@ -157,7 +158,7 @@ interface ToastState {
 
 function Home({ token }: { token: string }) {
   const store = useStore(token);
-  const [tab, setTab] = useState<Tab>("lista");
+  const [tab, setTab] = useState<Tab>("pasti");
   const [trip, setTrip] = useState<StoreId[]>(loadTrip);
   const [editing, setEditing] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -182,7 +183,9 @@ function Home({ token }: { token: string }) {
   return (
     <div class="shell">
       <main class="content" id="contenuto">
-        {tab === "lista" ? (
+        {tab === "pasti" ? (
+          <MealsScreen store={store} />
+        ) : tab === "lista" ? (
           <ListScreen
             store={store}
             trip={trip}
@@ -193,10 +196,8 @@ function Home({ token }: { token: string }) {
           />
         ) : tab === "prezzi" ? (
           <PricesScreen store={store} onPhoto={() => setPhoto(true)} onEdit={setEditingPrice} />
-        ) : tab === "cerca" ? (
-          <SearchScreen store={store} />
         ) : (
-          <Coming tab={tab} />
+          <SearchScreen store={store} />
         )}
       </main>
       {toast && <Toast key={toast.id} toast={toast} onDone={() => setToast(null)} />}
@@ -281,6 +282,7 @@ function ListScreen(props: {
       <ReceiptCard total={total} done={done} estimate={estimate} unpriced={todo.length - known.length} trip={trip} onToggleTrip={props.onToggleTrip} />
       <SyncLine status={store.status} pending={store.pending.length} />
       <AddForm store={store} trip={trip} onToast={props.onToast} />
+      <MealNeeds store={store} />
 
       {total === 0 ? (
         <p class="empty">La lista è vuota. Scrivi qui sopra cosa serve: comparirà subito anche sugli altri telefoni.</p>
@@ -698,34 +700,11 @@ function Toast({ toast, onDone }: { toast: ToastState; onDone: () => void }) {
 
 // ---------------------------------------------------------------- altre schede
 
-const COMING: Record<Exclude<Tab, "lista" | "cerca">, { title: string; text: string }> = {
-  prezzi: { title: "Prezzi", text: "Qui fotograferai i cartellini: i prezzi finiranno nel negozio giusto e la lista ti dirà dove conviene. Arriva nella fase 2." },
-  offerte: { title: "Offerte", text: "Qui vedrai le offerte dei volantini che corrispondono alla tua lista. Arriva nella fase 4." },
-  negozi: { title: "Negozi", text: "Qui sceglierai i tuoi punti vendita e terrai le carte fedeltà. Arriva nella fase 5." },
-};
-
-function Coming({ tab }: { tab: Exclude<Tab, "lista" | "cerca"> }) {
-  const c = COMING[tab];
-  return (
-    <>
-      <header class="nav">
-        <h1 class="large">{c.title}</h1>
-      </header>
-      <div class="coming">
-        <Icon d={ICONS[tab]} />
-        <h2>In arrivo</h2>
-        <p>{c.text}</p>
-      </div>
-    </>
-  );
-}
-
 function TabBar({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
   const tabs: [Tab, string][] = [
-    ["lista", "Lista"],
+    ["pasti", "Pasti"],
+    ["lista", "Spesa"],
     ["prezzi", "Prezzi"],
-    ["offerte", "Offerte"],
-    ["negozi", "Negozi"],
     ["cerca", "Cerca"],
   ];
   return (

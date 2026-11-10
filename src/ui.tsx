@@ -20,7 +20,7 @@ export function useSheet(open: boolean): { mounted: boolean; shown: boolean } {
   return { mounted, shown };
 }
 
-export function Sheet(props: { open: boolean; title: string; onClose: () => void; action?: ComponentChildren; children: ComponentChildren }) {
+export function Sheet(props: { open: boolean; title: string; onClose: () => void; action?: ComponentChildren; closeLabel?: string; children: ComponentChildren }) {
   const { mounted, shown } = useSheet(props.open);
   const box = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(null);
@@ -50,7 +50,7 @@ export function Sheet(props: { open: boolean; title: string; onClose: () => void
         <div class="grab" aria-hidden="true" />
         <div class="sh">
           <button class="link" onClick={props.onClose}>
-            Annulla
+            {props.closeLabel ?? "Annulla"}
           </button>
           <b>{props.title}</b>
           <span class="sh-action">{props.action}</span>
@@ -62,6 +62,7 @@ export function Sheet(props: { open: boolean; title: string; onClose: () => void
 }
 
 export const ICONS = {
+  pasti: "M7 3v8a2 2 0 0 0 2 2v8M7 3v6M11 3v6M9 3v6M17 3c-2 2-2 6 0 8v10",
   lista: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
   prezzi: "M3 12l9-9h8v8l-9 9zM16 8h.01",
   offerte: "M4 4h16v16H4zM4 9h16M9 4v16",

@@ -1,6 +1,7 @@
 import {
   applyOp,
   randomId,
+  type Doc,
   type Item,
   type ListState,
   type Op,
@@ -8,6 +9,7 @@ import {
   type StoreId,
 } from "../shared/list";
 import type { Price, PriceState } from "../shared/prices";
+import { parseDiets, type Diets } from "../shared/meals";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -17,6 +19,8 @@ export type Status = "online" | "connecting" | "offline";
 interface Saved {
   items: ListState;
   prices: PriceState;
+  docs?: Record<string, Doc>;
+  diets?: unknown;
   pending: Op[];
 }
 
@@ -30,6 +34,10 @@ export type NewPrice = Omit<Price, "id" | "deleted" | "createdAt" | "updatedAt">
 export class ListStore {
   items: ListState = {};
   prices: PriceState = {};
+  docs: Record<string, Doc> = {};
+  /** diete della famiglia, se il server le manda a questa famiglia */
+  diets: Diets | null = null;
+  private dietsRaw: unknown = null;
   pending: Op[] = [];
   status: Status = "connecting";
   private ws: WebSocket | null = null;
@@ -46,6 +54,9 @@ export class ListStore {
     const saved = this.read();
     this.items = saved.items;
     this.prices = saved.prices;
+    this.docs = saved.docs ?? {};
+    this.dietsRaw = saved.diets ?? null;
+    this.diets = parseDiets(this.dietsRaw);
     this.pending = saved.pending;
   }
 
@@ -81,6 +92,21 @@ export class ListStore {
     if (!current) return;
     const updatedAt = Math.max(Date.now(), current.updatedAt + 1);
     this.commitAll([{ opId: randomId(), price: { ...current, ...patch, updatedAt } }]);
+  }
+
+  /** Salva un documento dei pasti (impostazioni, pasto mangiato, acquisto...). */
+  setDoc(id: string, data: Record<string, unknown>, deleted = false): void {
+    this.setDocs([{ id, data, deleted }]);
+  }
+
+  setDocs(list: { id: string; data: Record<string, unknown>; deleted?: boolean }[]): void {
+    const now = Date.now();
+    this.commitAll(
+      list.map(({ id, data, deleted }) => {
+        const updatedAt = Math.max(now, (this.docs[id]?.updatedAt ?? 0) + 1);
+        return { opId: randomId(), doc: { id, data, deleted: !!deleted, updatedAt } };
+      }),
+    );
   }
 
   private commit(item: Item): void {
@@ -147,6 +173,14 @@ export class ListStore {
     if (msg.t === "snapshot") {
       for (const item of msg.items) changed = applyOp(this, { opId: "snapshot", item }) || changed;
       for (const price of msg.prices ?? []) changed = applyOp(this, { opId: "snapshot", price }) || changed;
+      for (const doc of msg.docs ?? []) changed = applyOp(this, { opId: "snapshot", doc }) || changed;
+      if ("diets" in msg) {
+        if (JSON.stringify(msg.diets ?? null) !== JSON.stringify(this.dietsRaw)) {
+          this.dietsRaw = msg.diets ?? null;
+          this.diets = parseDiets(this.dietsRaw);
+          changed = true;
+        }
+      }
       // le modifiche locali non ancora confermate restano valide sopra l'istantanea
       for (const op of this.pending) changed = applyOp(this, op) || changed;
     } else if (msg.t === "ops") {
@@ -201,7 +235,7 @@ export class ListStore {
       const raw = this.storage?.getItem(this.key());
       if (raw) {
         const s = JSON.parse(raw) as Saved;
-        return { items: s.items ?? {}, prices: s.prices ?? {}, pending: s.pending ?? [] };
+        return { items: s.items ?? {}, prices: s.prices ?? {}, docs: s.docs ?? {}, diets: s.diets ?? null, pending: s.pending ?? [] };
       }
     } catch {
       // memoria non disponibile o rovinata: si riparte dal server
@@ -211,7 +245,7 @@ export class ListStore {
 
   private save(): void {
     try {
-      this.storage?.setItem(this.key(), JSON.stringify({ items: this.items, prices: this.prices, pending: this.pending }));
+      this.storage?.setItem(this.key(), JSON.stringify({ items: this.items, prices: this.prices, docs: this.docs, diets: this.dietsRaw, pending: this.pending }));
     } catch {
       // memoria piena o bloccata: la lista resta valida finché l'app è aperta
     }

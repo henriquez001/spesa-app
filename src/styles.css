@@ -21,6 +21,12 @@
   --s-euro: #8a3ffc;
   --s-conad: #d1453b;
   --s-oasi: #0f8f8f;
+  /* persone nei pasti: sempre con iniziale e nome, mai il colore da solo */
+  --p0: #c0256b;
+  --p1: #4f46e5;
+  --p2: #0f766e;
+  --p3: #9a3412;
+  --on-person: #ffffff;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Roboto Mono", Menlo, monospace;
   --paper: var(--surface);
@@ -46,6 +52,11 @@
     --s-euro: #b98cff;
     --s-conad: #ff7b70;
     --s-oasi: #3ccfcf;
+    --p0: #ff8fb8;
+    --p1: #a5b4fc;
+    --p2: #5eead4;
+    --p3: #fdba74;
+    --on-person: #000000;
   }
 }
 
@@ -581,6 +592,8 @@ button {
 .clear {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 20px 16px 0;
 }
 
@@ -1813,3 +1826,438 @@ button {
 }
 
 .prow-name .qty { white-space: nowrap; }
+
+
+/* ---------------- pasti (P3) */
+
+.nav-sub {
+  display: block;
+  font-size: 0.765rem;
+  color: var(--muted);
+}
+.tool.icon-only {
+  min-width: 44px;
+  justify-content: center;
+}
+.tool.icon-only .icon {
+  width: 24px;
+  height: 24px;
+}
+.days {
+  display: flex;
+  gap: 4px;
+  margin: 8px 16px 0;
+}
+.day {
+  flex: 1;
+  min-height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+}
+.day small {
+  font-size: 0.647rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.day span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 200ms ease-out;
+}
+.day.today small {
+  color: var(--accent);
+}
+.day.on span {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.seg {
+  display: flex;
+  gap: 2px;
+  margin: 12px 16px 0;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--sep);
+}
+.seg button {
+  flex: 1;
+  min-height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.765rem;
+  font-weight: 500;
+  transition: background-color 200ms ease-out;
+}
+.seg button.on {
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.mhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 32px 4px;
+  min-height: 44px;
+}
+.mhead h2 {
+  margin: 0;
+  font-size: 0.765rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.who-cell {
+  flex: none;
+  width: 52px;
+  display: grid;
+  place-items: center;
+}
+.who {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.765rem;
+  font-weight: 700;
+  color: var(--on-person);
+  background: var(--p0);
+}
+.who.p1 {
+  background: var(--p1);
+}
+.who.p2 {
+  background: var(--p2);
+}
+.who.p3 {
+  background: var(--p3);
+}
+.txt.static:active {
+  background: transparent;
+}
+.row.dish .txt {
+  padding-right: 4px;
+}
+.row.dish.done .name {
+  text-decoration: none;
+}
+.txt.recipe {
+  padding-left: 16px;
+}
+.name.strong {
+  font-weight: 600;
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.pill.aroma {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pill.out {
+  background: var(--offer-soft);
+  color: var(--offer);
+}
+.more {
+  color: var(--accent);
+  font-size: 0.882rem;
+  margin-top: 4px;
+}
+.qty {
+  font-family: var(--mono);
+  font-size: 0.824rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ricetta */
+.recipe-sheet {
+  display: grid;
+  gap: 12px;
+}
+.eyebrow {
+  font-size: 0.706rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.recipe-block {
+  display: grid;
+  gap: 12px;
+}
+.recipe-block + .recipe-block {
+  border-top: 0.5px solid var(--sep);
+  padding-top: 12px;
+}
+.recipe-block h3 {
+  margin: 0;
+  font-size: 1.294rem;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.recipe-block h4 {
+  margin: 4px 0 0;
+  font-size: 0.765rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.ports {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.port {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.port .pn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.port .who {
+  width: 24px;
+  height: 24px;
+}
+.port ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  font-size: 0.765rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.adds {
+  margin: 0;
+  font-size: 0.765rem;
+  color: var(--muted);
+}
+.adds b {
+  color: var(--fg);
+}
+.adds.out {
+  color: var(--offer);
+}
+.steps {
+  margin: 0;
+  padding-left: 24px;
+  display: grid;
+  gap: 10px;
+  line-height: 1.4;
+}
+.steps li::marker {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* impostazioni (S2) */
+.settings {
+  display: grid;
+}
+.shead {
+  margin: 14px 16px 6px;
+  font-size: 0.765rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.sgroup {
+  background: var(--surface);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sfoot {
+  margin: 6px 16px 0;
+  font-size: 0.765rem;
+  color: var(--muted);
+}
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 16px;
+  position: relative;
+}
+.srow > span:first-child,
+.srow-text {
+  flex: 1;
+  min-width: 0;
+}
+.srow + .srow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  border-top: 0.5px solid var(--sep);
+}
+.srow-text small {
+  display: block;
+  font-size: 0.765rem;
+  color: var(--muted);
+}
+.val {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stepper {
+  display: flex;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--sep);
+}
+.stepper button {
+  width: 44px;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 1.2rem;
+}
+.stepper button + button {
+  border-left: 0.5px solid var(--muted);
+}
+.stepper button:disabled {
+  color: var(--muted);
+}
+.dchips {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px 14px;
+}
+.dchip {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: 1.5px solid var(--sep);
+  background: transparent;
+  color: var(--fg);
+  font-weight: 600;
+  transition:
+    background-color 200ms ease-out,
+    transform 100ms ease-out;
+}
+.dchip[aria-pressed="true"] {
+  background: var(--p1);
+  border-color: var(--p1);
+  color: var(--on-person);
+}
+.dchip:active,
+.stepper button:active {
+  transform: scale(0.97);
+}
+
+/* cibi da evitare / da preferire (E1) */
+.sgroup.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+button.srow {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  transition: background-color 100ms ease-out;
+}
+button.srow:active {
+  background: var(--accent-soft);
+}
+li + li > .srow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  border-top: 0.5px solid var(--sep);
+}
+.chev-r {
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.tick {
+  color: var(--accent);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+.pick[aria-checked="true"] .tick {
+  opacity: 1;
+}
+
+/* dispensa */
+.group.flush {
+  margin: 0;
+}
+.row.pantry {
+  align-items: center;
+}
+.row.pantry .txt {
+  padding-left: 16px;
+}
+.grams {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 16px;
+  color: var(--muted);
+}
+.input.num {
+  width: 84px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day span,
+  .seg button,
+  .dchip,
+  button.srow {
+    transition: none;
+  }
+  .dchip:active,
+  .stepper button:active {
+    transform: none;
+  }
+}
