@@ -387,6 +387,19 @@ export const RECIPES: Recipe[] = [
     "Condisci il {proteina} con pepe nero macinato grosso e scorza di limone.",
     "Cuocilo in padella antiaderente con un filo dell'olio pesato, 3–4 minuti per lato, e sfuma con il succo di limone.",
   ] }),
+  R({ id: "c-gamberetti-aglio", title: "Gamberetti all'aglio e prezzemolo, con {contorno}", slots: ["cena", "pranzo"], proteins: ["crostacei"], side: true, veg: [], aromi: ["aglio", "prezzemolo", "peperoncino"], minutes: 15, steps: [
+    "Sciacqua i gamberetti e asciugali bene.",
+    "Scalda metà dell'olio pesato con uno spicchio d'aglio e un pizzico di peperoncino, poi salta i gamberetti a fuoco vivo 3 minuti.",
+    "Spegni, togli l'aglio e completa con prezzemolo tritato e qualche goccia di limone.",
+  ] }),
+  R({ id: "c-gamberetti-spiedini", title: "Spiedini di gamberetti al limone, con {contorno}", slots: ["cena", "pranzo"], proteins: ["crostacei"], side: true, veg: [], aromi: ["limone", "timo", "paprika dolce"], minutes: 20, steps: [
+    "Infila i gamberetti negli spiedini e lasciali 10 minuti con succo e scorza di limone, timo e paprika.",
+    "Cuocili sulla piastra calda 2 minuti per lato, spennellati con metà dell'olio pesato.",
+  ] }),
+  R({ id: "c-gamberetti-pomodorini", title: "Gamberetti in padella con pomodorini e basilico, con {contorno}", slots: ["cena", "pranzo"], proteins: ["crostacei"], side: true, veg: [], aromi: ["pomodorini", "basilico", "aglio"], minutes: 15, steps: [
+    "Salta qualche pomodorino a metà con metà dell'olio pesato e uno spicchio d'aglio, 3 minuti.",
+    "Aggiungi i gamberetti e cuoci 3 minuti a fuoco vivo; basilico fresco alla fine.",
+  ] }),
   R({ id: "c-pesce-pomodoro", title: "{proteina} in umido al pomodoro, con {contorno}", slots: ["cena", "pranzo"], proteins: ["pesce_bianco"], side: true, veg: [], aromi: ["passata di pomodoro", "aglio", "prezzemolo"], minutes: 25, steps: [
     "Scalda 5 cucchiai di passata con l'aglio e un filo dell'olio pesato per 5 minuti.",
     "Adagia il {proteina} nel sugo, coperchio, 10 minuti. Prezzemolo alla fine.",

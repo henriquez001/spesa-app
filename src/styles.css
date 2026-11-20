@@ -2226,6 +2226,11 @@ li + li > .srow::before {
   opacity: 1;
 }
 
+.swap-note {
+  font-size: 0.765rem;
+  color: var(--accent);
+}
+
 /* dispensa */
 .group.flush {
   margin: 0;

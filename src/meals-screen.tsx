@@ -244,9 +244,14 @@ function DishRow(props: { diets: Diets; dish: Dish; grouped: boolean; done: bool
         <span class="txt-main">
           <span class="name">{title}</span>
           <span class="meta">{meta}</span>
-          {!props.grouped && dish.potatoes && (
+          {((!props.grouped && dish.potatoes) || dish.swaps) && (
             <span class="pills">
-              <span class="pill aroma">patate al posto del riso</span>
+              {!props.grouped && dish.potatoes && <span class="pill aroma">patate al posto del riso</span>}
+              {dish.swaps?.map((w) => (
+                <span key={w} class="pill aroma">
+                  {w}
+                </span>
+              ))}
             </span>
           )}
         </span>
@@ -290,6 +295,7 @@ function RecipeSheet({ diets, dishes, open, onClose }: { diets: Diets; dishes: D
                           <li key={p.food}>{amount(p.food, p.g)}</li>
                         ))}
                       </ul>
+                      {d.swaps && <span class="swap-note">Equivalenza: {d.swaps.join(", ")}</span>}
                     </div>
                   ))}
                 </div>
@@ -298,6 +304,7 @@ function RecipeSheet({ diets, dishes, open, onClose }: { diets: Diets; dishes: D
                     <b>Aggiunte:</b> {d0.aromi.join(", ")}, sale e pepe
                   </p>
                 )}
+                {group.some((d) => d.swaps) && <p class="adds">Le equivalenze vengono dalla guida della nutrizionista: i grammi sono già ricalcolati per ciascuno.</p>}
                 {d0.flour && <p class="adds out">La farina non è nella dieta: si toglie dalle Impostazioni.</p>}
                 <h4>Preparazione</h4>
                 <ol class="steps">

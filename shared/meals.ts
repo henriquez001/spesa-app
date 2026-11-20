@@ -71,6 +71,8 @@ export interface Dish {
   potatoes: boolean;
   minutes?: number;
   steps: string[];
+  /** equivalenze usate in questo piatto, per esempio "branzino al posto di petto di pollo" */
+  swaps?: string[];
 }
 
 // ------------------------------------------------------------------ diete: lettura e controllo
@@ -289,22 +291,49 @@ function pickSide(s: MealSettings, week: number, n: number, usedToday: Set<strin
 }
 
 /**
- * Equivalenze dalla guida della nutrizionista: stesso peso, alimento diverso.
- * Ogni voce è la rotazione dei giorni: l'alimento della dieta resta il più frequente.
- * Solo cereali senza glutine al posto del riso (pane Schär nella dieta).
+ * Equivalenze dalla guida della nutrizionista. Il fattore è il peso che vale 100 g di carne magra
+ * (proteine) o 100 g di riso (carboidrati): lo scambio tiene la proporzione di ciascuno,
+ * così Alice e Leandro restano ognuno con le sue grammature.
  */
-export const EQUIVALENTS: Record<string, string[]> = {
-  pollo: ["pollo", "tacchino", "pollo"],
-  manzo: ["manzo", "vitello"],
-  riso: ["riso", "quinoa", "riso", "grano_saraceno", "riso", "miglio"],
+export const PROTEIN_FACTOR: Record<string, number> = {
+  pollo: 100, tacchino: 100, manzo: 100, vitello: 100,
+  merluzzo: 125, nasello: 125, platessa: 125, branzino: 125, sogliola: 125,
+  salmone: 105, sgombro: 105, orata: 105, tonno_fresco: 105,
+  gamberetti: 120,
+  // 3 uova (180 g col guscio) = 100 g di carne; si scambiano solo in uscita
+  uova: 180,
 };
+const WHITE_FISH = ["merluzzo", "nasello", "platessa", "branzino", "sogliola"];
+const FAT_FISH = ["salmone", "sgombro", "orata", "tonno_fresco"];
+/** Solo cereali senza glutine (pane Schär nella dieta). Le patate usano il rapporto delle Impostazioni. */
+export const CARB_FACTOR: Record<string, number> = { riso: 100, quinoa: 100, grano_saraceno: 100, miglio: 100, pane_schar: 135, pane_integrale: 135 };
 
-function equivalent(foodId: string, d: number, s: MealSettings): string {
-  const rot = EQUIVALENTS[foodId];
-  if (!rot) return foodId;
-  const ok = rot.filter((f) => !s.exclude.includes(f));
-  const list = weighted(ok.length ? ok : [foodId], (f) => [f], s.prefer);
-  return list[mod(d, list.length)];
+/** Le alternative di una proteina: quella della dieta resta tra le opzioni, le altre vengono dalla guida. */
+function proteinOptions(orig: string, week: number): string[] {
+  const g = food(orig).group;
+  const white = WHITE_FISH[mod(week, WHITE_FISH.length)];
+  const fat = FAT_FISH[mod(week, FAT_FISH.length)];
+  if (g === "pollo" || g === "manzo") return [orig, "tacchino", white, orig === "manzo" ? "pollo" : "vitello", fat, "gamberetti"].filter((f, i, a) => a.indexOf(f) === i);
+  if (g === "pesce_bianco" || g === "pesce_grasso") return [orig, "pollo", g === "pesce_bianco" ? fat : white, "tacchino", "gamberetti"];
+  if (g === "uova") return [orig, "pollo", white, "tacchino"];
+  return [orig];
+}
+
+/** C'è almeno una ricetta con il carboidrato a parte per questa proteina in questo pasto? */
+function hasRecipe(foodId: string, slot: Slot): boolean {
+  return RECIPES.some((r) => (r.slots as string[]).includes(slot) && !r.carbs && accepts(r, { food: foodId, g: 0 }));
+}
+
+function pickOption(options: string[], n: number, s: MealSettings, slot?: Slot): string {
+  const ok = options.filter((f, i) => !s.exclude.includes(f) && (i === 0 || !slot || hasRecipe(f, slot)));
+  const list = weighted(ok.length ? ok : options.slice(0, 1), (f) => [f], s.prefer);
+  return list[mod(n, list.length)];
+}
+
+/** Scambia un alimento con il suo equivalente, mantenendo la proporzione della persona. */
+function swapPortion(p: Portion, to: string, factors: Record<string, number>): Portion {
+  if (to === p.food || !factors[p.food] || !factors[to]) return p;
+  return { food: to, g: round5((p.g * factors[to]) / factors[p.food]) };
 }
 
 /** Cambia l'alimento nei testi della ricetta: "Pollo arrosto" → "Tacchino arrosto". */
@@ -328,18 +357,26 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
   for (const slot of SLOTS) {
     const reroll = rerolls[rerollKey(date, slot)] ?? 0;
     // chi mangia questo pasto e con quali alimenti
-    const eaters: { person: Person; meal: DietMeal; chosen: Portion[]; mensa: boolean }[] = [];
+    const eaters: { person: Person; meal: DietMeal; chosen: Portion[]; mensa: boolean; swapNote?: string }[] = [];
     for (const person of diets.people) {
       const meal = person.days[String(wd)]?.[slot];
       if (!meal) continue;
       const mensa = slot === "pranzo" && (settings.mensa[person.id] ?? []).includes(wd);
       const chosen = choose(meal, date, settings.exclude);
-      // proteina equivalente (pollo → tacchino, manzo → vitello): uguale per tutti nello stesso pasto
-      if (slot === "pranzo" || slot === "cena") {
+      let swapNote: string | undefined;
+      // proteina equivalente dalla guida: stessa scelta per tutti nello stesso pasto, grammi di ciascuno
+      if ((slot === "pranzo" || slot === "cena") && !mensa) {
         const main = mainOf(chosen);
-        if (main) main.food = equivalent(main.food, d + (slot === "pranzo" ? 3 : 0), settings);
+        if (main && PROTEIN_FACTOR[main.food]) {
+          const to = pickOption(proteinOptions(main.food, week), d * 3 + reroll + (slot === "pranzo" ? 2 : 0), settings, slot);
+          const sw = swapPortion(main, to, PROTEIN_FACTOR);
+          if (sw !== main) {
+            swapNote = `${food(to).name} al posto di ${food(main.food).name}`;
+            chosen[chosen.indexOf(main)] = sw;
+          }
+        }
       }
-      eaters.push({ person, meal, chosen, mensa });
+      eaters.push({ person, meal, chosen, mensa, swapNote });
     }
 
     if (slot === "pranzo" || slot === "cena") {
@@ -376,10 +413,17 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
         const offset = slot === "pranzo" ? Math.floor(pool.length / 2) : 0;
         const recipe = pool[mod(wd + offset + reroll, pool.length)];
         const flour = !!recipe.flour && settings.flour;
+        const notes: string[][] = members.map((m) => (m.swapNote ? [m.swapNote] : []));
         if (!recipe.carbs) {
-          // carboidrato servito a parte: il riso può diventare un cereale equivalente
-          const carb = equivalent("riso", d + (slot === "pranzo" ? 1 : 0), settings);
-          for (const sw of swapped) for (const p of sw.portions) if (p.food === "riso") p.food = carb;
+          // carboidrato servito a parte: riso o pane possono diventare un equivalente della guida
+          const to = pickOption(["", "quinoa", "riso", "grano_saraceno", "patate", "miglio"], d * 5 + reroll + (slot === "pranzo" ? 1 : 0), settings);
+          const factors: Record<string, number> = { ...CARB_FACTOR, patate: settings.ratio };
+          swapped.forEach((sw, i) => {
+            const c = carbOf(sw.portions);
+            if (!to || !c || c.food === to || !factors[c.food]) return;
+            sw.portions[sw.portions.indexOf(c)] = swapPortion(c, to, factors);
+            notes[i].push(`${food(to).name} al posto di ${food(c.food).name.replace(/ casereccio Schär senza glutine/, " Schär")}`);
+          });
         }
         const first = swapped[0].portions;
         const mainFood = mainOf(first)?.food ?? "";
@@ -413,7 +457,7 @@ export function planDay(date: string, diets: Diets, settings: MealSettings, rero
         members.forEach((m, i) => {
           const portions = withVeg(swapped[i].portions, veg);
           if (flour) portions.push({ food: "farina_riso", g: FLOUR_G });
-          out.push({ date, slot, person: m.person.id, title: cap(rename(fill(recipe.title, names))), recipeId: recipe.id, together, portions, aromi: recipe.aromi, flour, potatoes: swapped[i].potatoes, minutes: recipe.minutes, steps });
+          out.push({ date, slot, person: m.person.id, title: cap(rename(fill(recipe.title, names))), recipeId: recipe.id, together, portions, aromi: recipe.aromi, flour, potatoes: swapped[i].potatoes, minutes: recipe.minutes, steps, swaps: notes[i].length ? notes[i] : undefined });
         });
       }
       continue;
