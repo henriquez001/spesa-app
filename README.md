@@ -24,6 +24,19 @@ Per restare nel piano gratuito di Workers AI (10.000 "neuroni" al giorno per tut
 
 Ogni notte alle 2:00 UTC un cron legge il catalogo di spesaonline.conad.it per circa 95 parole della spesa comune, una pagina ogni 3 secondi (prezzi nazionali Conad, non del singolo punto vendita). I prezzi stanno in un Durable Object unico (`Catalog`) e la lista li usa per il confronto quando la famiglia non ha un prezzo suo recente. Stato dell'ultimo giro: `/api/listino`; per avviarlo a mano: `/api/listino/aggiorna`.
 
+## Pasti
+
+La prima scheda genera i pasti del giorno dalle diete di casa: una striscia con i prossimi sette giorni, un filtro per persona e, per pranzi e cene, una ricetta con la preparazione presa dal ricettario (`shared/recipes.ts`, scritto a mano, senza AI). Le grammature vengono solo dalle diete; la cena è una ricetta sola con una porzione per ciascuno. Dall'ingranaggio si scelgono i giorni di mensa, lo scambio riso → patate (con il rapporto), la farina "fuori piano" e quanti giorni copre la spesa.
+
+Segnare un pasto come mangiato toglie gli alimenti dalla dispensa; nella scheda Spesa la sezione "Per i pasti" mostra cosa manca per i prossimi giorni, e spuntare una riga lo aggiunge alla dispensa.
+
+Le diete sono dati personali e il repository è pubblico, quindi non sono nel codice. Stanno in due secret del Worker:
+
+```sh
+npx wrangler secret put DIETE           # JSON compatto, vedi parseDiets in shared/meals.ts
+npx wrangler secret put DIETE_FAMIGLIE  # id dei Durable Object delle famiglie che le ricevono, separati da virgola
+```
+
 ## Requisiti
 
 - Node.js 20 o più recente
